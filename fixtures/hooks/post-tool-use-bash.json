@@ -1,0 +1,10 @@
+{
+  "hook_event_name": "PostToolUse",
+  "session_id": "test-session-001",
+  "cwd": "/tmp/test-project",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "npm test"
+  },
+  "tool_output": "PASS src/auth.test.ts\n  ✓ login works\n  ✓ logout works\n\nTests: 2 passed, 2 total"
+}

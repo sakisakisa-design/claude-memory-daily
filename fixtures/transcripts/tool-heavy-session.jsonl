@@ -1,0 +1,9 @@
+{"type":"tool_use","tool":"Write","tool_input":{"file_path":"src/a.ts","content":"file a"},"timestamp":"2026-01-01T00:00:00Z"}
+{"type":"tool_result","tool":"Write","tool_result":"OK","timestamp":"2026-01-01T00:00:01Z"}
+{"type":"tool_use","tool":"Edit","tool_input":{"file_path":"src/b.ts"},"timestamp":"2026-01-01T00:00:02Z"}
+{"type":"tool_result","tool":"Edit","tool_result":"OK","timestamp":"2026-01-01T00:00:03Z"}
+{"type":"tool_use","tool":"Bash","tool_input":{"command":"npm run build"},"timestamp":"2026-01-01T00:00:04Z"}
+{"type":"tool_error","tool":"Bash","tool_result":"Error: build failed","timestamp":"2026-01-01T00:00:05Z"}
+{"type":"tool_use","tool":"Read","tool_input":{"file_path":"src/b.ts"},"timestamp":"2026-01-01T00:00:06Z"}
+{"type":"tool_use","tool":"Bash","tool_input":{"command":"npm run build"},"timestamp":"2026-01-01T00:00:07Z"}
+{"type":"tool_result","tool":"Bash","tool_result":"Build succeeded","timestamp":"2026-01-01T00:00:08Z"}

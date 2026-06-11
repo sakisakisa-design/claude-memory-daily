@@ -1,0 +1,7 @@
+{"role":"user","content":"Create a new login page"}
+{"role":"assistant","content":"I'll create the login page for you."}
+{"type":"tool_use","tool":"Write","tool_input":{"file_path":"src/login.tsx","content":"export function Login() { return <div>Login</div> }"},"timestamp":"2026-01-01T00:00:00Z"}
+{"type":"tool_result","tool":"Write","tool_result":"File written successfully","timestamp":"2026-01-01T00:00:01Z"}
+{"type":"tool_use","tool":"Bash","tool_input":{"command":"npm test"},"timestamp":"2026-01-01T00:00:02Z"}
+{"type":"tool_result","tool":"Bash","tool_result":"Tests passed: 5/5","timestamp":"2026-01-01T00:00:05Z"}
+{"role":"assistant","content":"Login page created and tests passing."}

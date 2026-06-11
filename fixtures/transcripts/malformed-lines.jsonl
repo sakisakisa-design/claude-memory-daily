@@ -1,0 +1,6 @@
+{"role":"user","content":"hello"}
+this is not valid json
+{"role":"assistant","content":"hi there"}
+
+{"broken": true, "missing": "closing
+{"role":"user","content":"sk-proj-abc123secretkey123456789 should be redacted and API_KEY=supersecretvalue123 too"}

@@ -1,0 +1,11 @@
+{
+  "hook_event_name": "PostToolUse",
+  "session_id": "test-session-001",
+  "cwd": "/tmp/test-project",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "/tmp/test-project/src/auth.ts",
+    "content": "export function login() { ... }"
+  },
+  "tool_output": "File written successfully"
+}

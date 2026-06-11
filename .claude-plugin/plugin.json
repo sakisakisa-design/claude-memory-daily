@@ -1,0 +1,5 @@
+{
+  "name": "claude-memory-harness",
+  "description": "Local memory harness for Claude Code with hook-based memory injection, searchable project/global memory, and automatic checkpoint writing",
+  "version": "0.1.0"
+}
