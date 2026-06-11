@@ -65,6 +65,17 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/hook-runner.js\" SessionEnd"
+          }
+        ]
+      }
     ]
   }
 }

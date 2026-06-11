@@ -2,5 +2,5 @@
   "hook_event_name": "UserPromptSubmit",
   "session_id": "test-session-001",
   "cwd": "/tmp/test-project",
-  "user_prompt": "How do I fix the login bug in the auth module?"
+  "prompt": "How do I fix the login bug in the auth module?"
 }

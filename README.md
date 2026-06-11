@@ -5,8 +5,8 @@ A local memory plugin for Claude Code that provides cross-session memory through
 ## Features
 
 - **Hook-based memory injection**: Automatically injects relevant memory at session start and before each prompt
-- **Local storage**: All data stays on your machine (SQLite + Markdown files)
-- **Searchable memory**: Full-text search across project and global memory
+- **Local storage**: All data stays on your machine (JSON store + Markdown files)
+- **Searchable memory**: Plain-text search across project/global memory and indexed summaries
 - **Automatic checkpoints**: Writes structured session checkpoints via a configurable writer model
 - **Project and global memory**: Per-project memory files plus optional global memory
 - **Privacy-first**: No cloud sync, no data leaves your machine except configured writer calls
@@ -56,7 +56,7 @@ Config file location: `~/.cmh/config.json`
   "enabled": true,
   "storage": {
     "scope": "user",
-    "index": "sqlite-fts5",
+    "index": "json-plain-text",
     "maxInjectedChars": 12000
   },
   "writer": {
@@ -131,14 +131,14 @@ cmh forget checkpoint --confirm  # Clear checkpoint
 3. **PostToolUse**: Records high-signal tool events (file writes, bash commands)
 4. **PostToolUseFailure**: Records failure events
 5. **PostCompact**: Captures compacted session summaries
-6. **Stop**: Triggers checkpoint writing via the configured writer model
+6. **Stop / SessionEnd**: Enqueues throttled checkpoint writer work; configured writer calls run in a background worker
 
 ### Memory Files
 
 ```
 ~/.cmh/
   config.json
-  memory.sqlite
+  store.json
   memories/
     global/
       MEMORY.md
@@ -204,9 +204,9 @@ npm uninstall -g claude-memory-harness
 
 ### Search returns no results
 
-1. Run `cmh memory reindex` to rebuild the search index
-2. Check if FTS5 is available: `cmh doctor`
-3. Plain text search is used as fallback
+1. Run `cmh memory reindex` to refresh indexed summaries
+2. Check that memory files or indexed summaries contain the query terms
+3. v0 uses the JSON store plus plain-text search; SQLite FTS5 is not implemented yet
 
 ## Development
 

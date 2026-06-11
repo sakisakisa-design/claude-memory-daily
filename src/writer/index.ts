@@ -1,5 +1,6 @@
 import { loadConfig, resolveApiKey } from "../config/index.js";
 import type { CMHConfig, WriterConfig } from "../config/index.js";
+import { redactValue } from "../redaction/index.js";
 import { log } from "../utils/index.js";
 
 export interface WriterInput {
@@ -19,11 +20,11 @@ export interface WriterInput {
 export interface WriterOutput {
   checkpoint_markdown: string;
   project_memory_patch: {
-    mode: "none" | "replace-section-or-append";
+    mode: "none" | "replace-full";
     markdown: string;
   };
   global_memory_patch: {
-    mode: "none" | "replace-section-or-append";
+    mode: "none" | "replace-full";
     markdown: string;
   };
   notes_markdown: string;
@@ -33,8 +34,8 @@ export interface WriterOutput {
 
 const WRITER_SYSTEM_PROMPT = `You are a checkpoint and memory writer for a coding assistant. Your job is to:
 1. Write a structured checkpoint summarizing the current session state, task progress, and next steps.
-2. Suggest patches to project memory for durable facts (architecture decisions, gotchas, commands).
-3. Suggest patches to global memory only for broadly useful, stable information.
+2. Suggest full replacements for project memory when durable facts should change.
+3. Suggest full replacements for global memory only for broadly useful, stable information.
 4. Clean up notes if needed.
 
 Rules:
@@ -46,49 +47,51 @@ Rules:
 - Keep checkpoint focused on current task state and next action.
 - Keep project memory focused on stable architecture, decisions, gotchas, commands.
 - Keep global memory minimal and opt-in.
+- For project_memory_patch and global_memory_patch, use mode "replace-full" only when markdown contains the complete desired replacement for the entire target MEMORY.md file. Never return partial patches, snippets, or section-only content.
 
 Respond ONLY with a valid JSON object matching this schema:
 {
   "checkpoint_markdown": "...",
-  "project_memory_patch": { "mode": "none" | "replace-section-or-append", "markdown": "..." },
-  "global_memory_patch": { "mode": "none" | "replace-section-or-append", "markdown": "..." },
+  "project_memory_patch": { "mode": "none" | "replace-full", "markdown": "..." },
+  "global_memory_patch": { "mode": "none" | "replace-full", "markdown": "..." },
   "notes_markdown": "...",
   "index_summary": "...",
   "warnings": []
 }`;
 
 export function buildWriterPrompt(input: WriterInput): string {
+  const redacted = redactValue(input);
   const parts: string[] = [
     `## Session Context`,
-    `- Project: ${input.projectId}`,
-    `- CWD: ${input.cwd}`,
-    `- Branch: ${input.branch || "unknown"}`,
+    `- Project: ${redacted.projectId}`,
+    `- CWD: ${redacted.cwd}`,
+    `- Branch: ${redacted.branch || "unknown"}`,
     "",
     `## Current Project Memory`,
-    input.projectMemory || "(empty)",
+    redacted.projectMemory || "(empty)",
     "",
     `## Current Global Memory`,
-    input.globalMemory || "(empty)",
+    redacted.globalMemory || "(empty)",
     "",
     `## Current Checkpoint`,
-    input.checkpoint || "(empty)",
+    redacted.checkpoint || "(empty)",
     "",
     `## Notes`,
-    input.notes || "(empty)",
+    redacted.notes || "(empty)",
     "",
     `## Session Summary`,
-    input.summary || "(no summary)",
+    redacted.summary || "(no summary)",
     "",
     `## Recent Tool Events`,
-    input.toolEvents || "(none)",
+    redacted.toolEvents || "(none)",
   ];
 
-  if (input.userPrompt) {
-    parts.push("", `## Latest User Prompt`, input.userPrompt);
+  if (redacted.userPrompt) {
+    parts.push("", `## Latest User Prompt`, redacted.userPrompt);
   }
 
-  if (input.transcriptTail) {
-    parts.push("", `## Transcript Tail`, input.transcriptTail);
+  if (redacted.transcriptTail) {
+    parts.push("", `## Transcript Tail`, redacted.transcriptTail);
   }
 
   parts.push("", "Please write an updated checkpoint and any memory patches needed.");
@@ -157,14 +160,39 @@ export function parseWriterOutput(raw: string): WriterOutput {
 
   const parsed = JSON.parse(content);
 
+  const projectPatch = normalizeMemoryPatch(parsed.project_memory_patch);
+  const globalPatch = normalizeMemoryPatch(parsed.global_memory_patch);
+
   return {
     checkpoint_markdown: parsed.checkpoint_markdown || "",
-    project_memory_patch: parsed.project_memory_patch || { mode: "none", markdown: "" },
-    global_memory_patch: parsed.global_memory_patch || { mode: "none", markdown: "" },
+    project_memory_patch: projectPatch,
+    global_memory_patch: globalPatch,
     notes_markdown: parsed.notes_markdown || "",
     index_summary: parsed.index_summary || "",
     warnings: parsed.warnings || [],
   };
+}
+
+function normalizeMemoryPatch(patch: unknown): WriterOutput["project_memory_patch"] {
+  if (!patch || typeof patch !== "object") {
+    return { mode: "none", markdown: "" };
+  }
+  const candidate = patch as { mode?: unknown; markdown?: unknown };
+  if (candidate.mode === "replace-full") {
+    return {
+      mode: "replace-full",
+      markdown: typeof candidate.markdown === "string" ? candidate.markdown : "",
+    };
+  }
+  return { mode: "none", markdown: "" };
+}
+
+export function applyMemoryPatch(current: string, patch: WriterOutput["project_memory_patch"]): string | null {
+  if (patch.mode === "none") return null;
+  if (patch.mode === "replace-full" && patch.markdown.trim()) {
+    return patch.markdown;
+  }
+  return null;
 }
 
 export function createMockWriterOutput(overrides?: Partial<WriterOutput>): WriterOutput {

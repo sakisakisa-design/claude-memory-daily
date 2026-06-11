@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseWriterOutput, buildWriterPrompt, createMockWriterOutput } from "./index.js";
+import { parseWriterOutput, buildWriterPrompt, createMockWriterOutput, applyMemoryPatch } from "./index.js";
 import type { WriterInput } from "./index.js";
 
 describe("writer", () => {
@@ -29,7 +29,7 @@ describe("writer", () => {
   it("parses valid JSON writer output", () => {
     const raw = JSON.stringify({
       checkpoint_markdown: "# Checkpoint\nTask completed.",
-      project_memory_patch: { mode: "replace-section-or-append", markdown: "New fact" },
+      project_memory_patch: { mode: "replace-full", markdown: "# Project Memory\nNew fact" },
       global_memory_patch: { mode: "none", markdown: "" },
       notes_markdown: "",
       index_summary: "Completed login fix",
@@ -38,9 +38,21 @@ describe("writer", () => {
 
     const result = parseWriterOutput(raw);
     expect(result.checkpoint_markdown).toContain("Task completed");
-    expect(result.project_memory_patch.mode).toBe("replace-section-or-append");
+    expect(result.project_memory_patch.mode).toBe("replace-full");
     expect(result.global_memory_patch.mode).toBe("none");
     expect(result.warnings).toEqual([]);
+  });
+
+  it("does not accept legacy partial memory patch modes", () => {
+    const raw = JSON.stringify({
+      checkpoint_markdown: "# Checkpoint",
+      project_memory_patch: { mode: "replace-section-or-append", markdown: "partial snippet" },
+      global_memory_patch: { mode: "none", markdown: "" },
+    });
+
+    const result = parseWriterOutput(raw);
+    expect(result.project_memory_patch.mode).toBe("none");
+    expect(result.project_memory_patch.markdown).toBe("");
   });
 
   it("parses JSON wrapped in code blocks", () => {
@@ -65,5 +77,11 @@ describe("writer", () => {
 
     const custom = createMockWriterOutput({ checkpoint_markdown: "custom" });
     expect(custom.checkpoint_markdown).toBe("custom");
+  });
+
+  it("applies only full memory replacements", () => {
+    expect(applyMemoryPatch("old", { mode: "none", markdown: "" })).toBeNull();
+    expect(applyMemoryPatch("old", { mode: "replace-full", markdown: "" })).toBeNull();
+    expect(applyMemoryPatch("old", { mode: "replace-full", markdown: "# New Memory" })).toBe("# New Memory");
   });
 });

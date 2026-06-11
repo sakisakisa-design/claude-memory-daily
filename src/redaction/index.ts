@@ -36,6 +36,27 @@ export function redactEnvValues(text: string, env: Record<string, string | undef
   return result;
 }
 
+export function redactText(text: string, env: Record<string, string | undefined> = process.env): string {
+  return redactEnvValues(redactSecrets(text), env);
+}
+
+export function redactValue<T>(value: T, env: Record<string, string | undefined> = process.env): T {
+  if (typeof value === "string") {
+    return redactText(value, env) as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => redactValue(item, env)) as T;
+  }
+  if (value && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value)) {
+      result[key] = redactValue(child, env);
+    }
+    return result as T;
+  }
+  return value;
+}
+
 export function containsSecret(text: string): boolean {
   return SECRET_PATTERNS.some((p) => p.test(text));
 }

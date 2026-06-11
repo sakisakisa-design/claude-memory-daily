@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { resolveProjectId } from "../../storage/project-id.js";
 import { readMemory, writeMemory } from "../../storage/memory-files.js";
-import { callWriter, buildWriterPrompt } from "../../writer/index.js";
+import { callWriter, applyMemoryPatch } from "../../writer/index.js";
 import { loadConfig, resolveApiKey } from "../../config/index.js";
 import { ensureDataDir } from "../../config/index.js";
 import { initLogger } from "../../utils/index.js";
@@ -93,12 +93,14 @@ Respond with JSON:
       }
 
       if (opts.apply) {
-        if (result.project_memory_patch.markdown) {
-          writeMemory("project", project.projectId, "MEMORY.md", result.project_memory_patch.markdown);
+        const updatedProjectMemory = applyMemoryPatch(projectMemory, result.project_memory_patch);
+        if (updatedProjectMemory !== null) {
+          writeMemory("project", project.projectId, "MEMORY.md", updatedProjectMemory);
           console.log("\nProject memory updated.");
         }
-        if (result.global_memory_patch.markdown) {
-          writeMemory("global", undefined, "MEMORY.md", result.global_memory_patch.markdown);
+        const updatedGlobalMemory = applyMemoryPatch(globalMemory, result.global_memory_patch);
+        if (updatedGlobalMemory !== null) {
+          writeMemory("global", undefined, "MEMORY.md", updatedGlobalMemory);
           console.log("Global memory updated.");
         }
         if (result.notes_markdown) {

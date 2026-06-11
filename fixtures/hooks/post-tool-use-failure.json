@@ -1,0 +1,10 @@
+{
+  "hook_event_name": "PostToolUseFailure",
+  "session_id": "test-session-001",
+  "cwd": "/tmp/test-project",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "npm test"
+  },
+  "error": "Command failed with exit code 1"
+}

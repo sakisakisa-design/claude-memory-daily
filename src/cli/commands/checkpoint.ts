@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { resolveProjectId } from "../../storage/project-id.js";
 import { readMemory, writeMemory } from "../../storage/memory-files.js";
 import { openDb, closeDb, getRecentEvents, indexDocument, createWriterJob, updateWriterJob } from "../../storage/db.js";
-import { callWriter, buildWriterPrompt, parseWriterOutput } from "../../writer/index.js";
+import { callWriter, buildWriterPrompt, applyMemoryPatch } from "../../writer/index.js";
 import { loadConfig, resolveApiKey } from "../../config/index.js";
 import { sha256 } from "../../utils/index.js";
 import { log, initLogger } from "../../utils/index.js";
@@ -102,12 +102,14 @@ checkpointCmd
         writeMemory("project", project.projectId, "checkpoint.md", result.checkpoint_markdown);
         console.log("\nCheckpoint saved.");
       }
-      if (result.project_memory_patch.mode !== "none" && result.project_memory_patch.markdown) {
-        writeMemory("project", project.projectId, "MEMORY.md", result.project_memory_patch.markdown);
+      const updatedProjectMemory = applyMemoryPatch(projectMemory, result.project_memory_patch);
+      if (updatedProjectMemory !== null) {
+        writeMemory("project", project.projectId, "MEMORY.md", updatedProjectMemory);
         console.log("Project memory updated.");
       }
-      if (result.global_memory_patch.mode !== "none" && result.global_memory_patch.markdown) {
-        writeMemory("global", undefined, "MEMORY.md", result.global_memory_patch.markdown);
+      const updatedGlobalMemory = applyMemoryPatch(globalMemory, result.global_memory_patch);
+      if (updatedGlobalMemory !== null) {
+        writeMemory("global", undefined, "MEMORY.md", updatedGlobalMemory);
         console.log("Global memory updated.");
       }
       if (result.notes_markdown) {

@@ -41,6 +41,25 @@ describe("search", () => {
     expect(results.length).toBe(0);
   });
 
+  it("searches indexed documents from the JSON store", async () => {
+    const { indexDocument } = await import("../storage/db.js");
+    const { searchMemory } = await import("./index.js");
+
+    indexDocument({
+      scope: "project",
+      project_id: "proj-1",
+      session_id: "sess-1",
+      type: "summary",
+      path: null,
+      title: "Checkpoint Summary",
+      body: "The payment retry flow uses idempotency keys for Stripe requests.",
+      fingerprint: "summary-1",
+    });
+
+    const results = searchMemory("Stripe idempotency", "proj-1");
+    expect(results.some((result) => result.type === "summary" && result.body.includes("idempotency"))).toBe(true);
+  });
+
   it("builds memory context with budget", async () => {
     const { writeMemory } = await import("../storage/memory-files.js");
     const { getMemoryContext } = await import("./index.js");

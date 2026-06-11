@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,18 +9,21 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, "..");
 const fixturesDir = join(projectRoot, "fixtures", "hooks");
 const hookRunner = join(projectRoot, "dist", "hooks", "hook-runner.js");
+const testDataDir = join(projectRoot, ".cmh-test");
+const transcriptPath = join(projectRoot, "fixtures", "transcripts", "simple-session.jsonl");
 
 let passed = 0;
 let failed = 0;
 
 function runHook(fixtureFile, eventName) {
-  const fixture = readFileSync(join(fixturesDir, fixtureFile), "utf-8");
+  const fixture = readFileSync(join(fixturesDir, fixtureFile), "utf-8")
+    .replaceAll("__TRANSCRIPT_SIMPLE__", transcriptPath);
   try {
     const result = execSync(`node ${hookRunner} ${eventName}`, {
       input: fixture,
       encoding: "utf-8",
       timeout: 10000,
-      env: { ...process.env, CLAUDE_PLUGIN_DATA: join(projectRoot, ".cmh-test") },
+      env: { ...process.env, CLAUDE_PLUGIN_DATA: testDataDir },
     });
     return JSON.parse(result.trim() || "{}");
   } catch (e) {
@@ -39,6 +42,24 @@ function assert(condition, message) {
 }
 
 console.log("Smoke test: Claude Memory Harness hooks\n");
+
+try {
+  rmSync(testDataDir, { recursive: true, force: true });
+  mkdirSync(join(testDataDir, "memories", "global"), { recursive: true });
+  writeFileSync(
+    join(testDataDir, "memories", "global", "MEMORY.md"),
+    "# Auth Module\nThe login bug lives in the auth module and uses JWT authentication.\n",
+    "utf-8"
+  );
+  writeFileSync(
+    join(testDataDir, "config.json"),
+    JSON.stringify({ writer: { enabled: false }, storage: { index: "json-plain-text" } }, null, 2),
+    "utf-8"
+  );
+} catch (e) {
+  console.error(`Failed to prepare smoke data: ${e.message}`);
+  process.exit(1);
+}
 
 // Test 1: SessionStart
 console.log("1. SessionStart hook:");
@@ -60,12 +81,8 @@ console.log("\n2. UserPromptSubmit hook:");
 try {
   const result = runHook("user-prompt-submit.json", "UserPromptSubmit");
   assert(typeof result === "object", "returns valid JSON object");
-  if (result.hookSpecificOutput) {
-    assert(result.hookSpecificOutput.hookEventName === "UserPromptSubmit", "hookEventName is UserPromptSubmit");
-    assert(typeof result.hookSpecificOutput.additionalContext === "string", "additionalContext is a string");
-  } else {
-    assert(true, "no relevant memory (empty output is valid)");
-  }
+  assert(result.hookSpecificOutput?.hookEventName === "UserPromptSubmit", "hookEventName is UserPromptSubmit");
+  assert(typeof result.hookSpecificOutput?.additionalContext === "string", "official prompt field retrieved memory context");
 } catch (e) {
   assert(false, `UserPromptSubmit hook: ${e.message}`);
 }
@@ -97,14 +114,32 @@ try {
   assert(false, `Stop hook: ${e.message}`);
 }
 
-// Test 6: Empty input
-console.log("\n6. Empty input handling:");
+// Test 6: PostToolUseFailure
+console.log("\n6. PostToolUseFailure hook:");
+try {
+  const result = runHook("post-tool-use-failure.json", "PostToolUseFailure");
+  assert(typeof result === "object", "returns valid JSON object");
+} catch (e) {
+  assert(false, `PostToolUseFailure hook: ${e.message}`);
+}
+
+// Test 7: PostCompact
+console.log("\n7. PostCompact hook:");
+try {
+  const result = runHook("post-compact.json", "PostCompact");
+  assert(typeof result === "object", "returns valid JSON object");
+} catch (e) {
+  assert(false, `PostCompact hook: ${e.message}`);
+}
+
+// Test 8: Empty input
+console.log("\n8. Empty input handling:");
 try {
   const result = execSync(`node ${hookRunner} SessionStart`, {
     input: "",
     encoding: "utf-8",
     timeout: 10000,
-    env: { ...process.env, CLAUDE_PLUGIN_DATA: join(projectRoot, ".cmh-test") },
+    env: { ...process.env, CLAUDE_PLUGIN_DATA: testDataDir },
   });
   assert(typeof JSON.parse(result.trim() || "{}") === "object", "handles empty input gracefully");
 } catch (e) {
@@ -116,7 +151,7 @@ console.log(`\n--- Results: ${passed} passed, ${failed} failed ---`);
 
 // Cleanup
 try {
-  execSync(`rm -rf ${join(projectRoot, ".cmh-test")}`);
+  rmSync(testDataDir, { recursive: true, force: true });
 } catch {}
 
 process.exit(failed > 0 ? 1 : 0);

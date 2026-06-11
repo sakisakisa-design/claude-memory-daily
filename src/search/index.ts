@@ -1,4 +1,5 @@
 import { readMemory, listMemoryFiles } from "../storage/memory-files.js";
+import { getIndexedDocuments } from "../storage/db.js";
 
 export interface SearchResult {
   id: string;
@@ -17,18 +18,14 @@ function searchPlainText(query: string, projectId: string | undefined, limit: nu
   const results: SearchResult[] = [];
   const queryLower = query.toLowerCase();
   const terms = queryLower.split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return [];
 
   const files = listMemoryFiles(projectId);
   for (const file of files) {
     const content = readMemory(file.scope, file.projectId, file.name);
     if (!content) continue;
 
-    const contentLower = content.toLowerCase();
-    let score = 0;
-    for (const term of terms) {
-      const matches = contentLower.split(term).length - 1;
-      score += matches;
-    }
+    const score = scoreText(content, terms);
 
     if (score > 0) {
       results.push({
@@ -42,8 +39,33 @@ function searchPlainText(query: string, projectId: string | undefined, limit: nu
     }
   }
 
+  for (const doc of getIndexedDocuments(projectId)) {
+    const text = `${doc.title}\n${doc.body}`;
+    const score = scoreText(text, terms);
+    if (score > 0) {
+      results.push({
+        id: doc.id,
+        scope: doc.scope,
+        title: doc.title,
+        body: doc.body.slice(0, 500),
+        type: doc.type,
+        score,
+      });
+    }
+  }
+
   results.sort((a, b) => b.score - a.score);
   return results.slice(0, limit);
+}
+
+function scoreText(text: string, terms: string[]): number {
+  const textLower = text.toLowerCase();
+  let score = 0;
+  for (const term of terms) {
+    const matches = textLower.split(term).length - 1;
+    score += matches;
+  }
+  return score;
 }
 
 export function getMemoryContext(projectId: string, maxChars: number): string {

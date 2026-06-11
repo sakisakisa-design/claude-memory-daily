@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { redactSecrets } from "../redaction/index.js";
+import { redactText, redactValue } from "../redaction/index.js";
 import { truncate } from "../utils/index.js";
 
 export interface TranscriptEntry {
@@ -8,7 +8,9 @@ export interface TranscriptEntry {
   content?: string;
   tool?: string;
   tool_input?: Record<string, unknown>;
+  tool_response?: unknown;
   tool_result?: string;
+  error?: unknown;
   timestamp?: string;
   [key: string]: unknown;
 }
@@ -64,12 +66,18 @@ export function parseTranscript(raw: string): ParsedTranscript {
 }
 
 function sanitizeEntry(entry: TranscriptEntry): TranscriptEntry {
-  const result = { ...entry };
+  const result = redactValue({ ...entry });
   if (typeof result.content === "string") {
-    result.content = truncate(redactSecrets(result.content), MAX_ENTRY_LENGTH);
+    result.content = truncate(redactText(result.content), MAX_ENTRY_LENGTH);
   }
   if (typeof result.tool_result === "string") {
-    result.tool_result = truncate(redactSecrets(result.tool_result), MAX_ENTRY_LENGTH);
+    result.tool_result = truncate(redactText(result.tool_result), MAX_ENTRY_LENGTH);
+  }
+  if (typeof result.tool_response === "string") {
+    result.tool_response = truncate(redactText(result.tool_response), MAX_ENTRY_LENGTH);
+  }
+  if (typeof result.error === "string") {
+    result.error = truncate(redactText(result.error), MAX_ENTRY_LENGTH);
   }
   return result;
 }

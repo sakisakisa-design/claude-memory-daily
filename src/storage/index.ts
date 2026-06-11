@@ -1,4 +1,17 @@
-export { openDb, closeDb, indexDocument, storeEvent, getRecentEvents, createWriterJob, updateWriterJob, getPendingWriterJobs, isFtsAvailable } from "./db.js";
+export {
+  openDb,
+  closeDb,
+  indexDocument,
+  storeEvent,
+  getRecentEvents,
+  getIndexedDocuments,
+  createWriterJob,
+  updateWriterJob,
+  getPendingWriterJobs,
+  getWriterJob,
+  getRecentWriterJobs,
+  isFtsAvailable,
+} from "./db.js";
 export type { StoredDocument, StoredEvent, WriterJob } from "./db.js";
 export { resolveProjectId } from "./project-id.js";
 export type { ProjectInfo } from "./project-id.js";

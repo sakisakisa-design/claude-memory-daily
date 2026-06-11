@@ -33,7 +33,7 @@ const DEFAULT_CONFIG: CMHConfig = {
   enabled: true,
   storage: {
     scope: "user",
-    index: "sqlite-fts5",
+    index: "json-plain-text",
     maxInjectedChars: 12000,
   },
   writer: {

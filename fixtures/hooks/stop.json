@@ -1,5 +1,7 @@
 {
   "hook_event_name": "Stop",
   "session_id": "test-session-001",
-  "cwd": "/tmp/test-project"
+  "cwd": "/tmp/test-project",
+  "transcript_path": "__TRANSCRIPT_SIMPLE__",
+  "stop_hook_active": false
 }

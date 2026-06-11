@@ -7,5 +7,8 @@
     "file_path": "/tmp/test-project/src/auth.ts",
     "content": "export function login() { ... }"
   },
-  "tool_output": "File written successfully"
+  "tool_response": {
+    "filePath": "/tmp/test-project/src/auth.ts",
+    "success": true
+  }
 }

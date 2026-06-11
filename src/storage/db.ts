@@ -92,18 +92,30 @@ export function isFtsAvailable(): boolean {
 export function indexDocument(doc: Omit<StoredDocument, "id" | "created_at" | "updated_at">): StoredDocument {
   if (!store) openDb();
   const now = new Date().toISOString();
-  const id = generateId();
-  const fullDoc: StoredDocument = { ...doc, id, created_at: now, updated_at: now };
-
-  const existingIdx = store!.documents.findIndex((d) => d.id === id);
+  const existingIdx = store!.documents.findIndex((d) =>
+    d.scope === doc.scope &&
+    d.project_id === doc.project_id &&
+    d.type === doc.type &&
+    d.path === doc.path &&
+    d.fingerprint === doc.fingerprint
+  );
   if (existingIdx >= 0) {
+    const existing = store!.documents[existingIdx];
+    const fullDoc: StoredDocument = {
+      ...doc,
+      id: existing.id,
+      created_at: existing.created_at,
+      updated_at: now,
+    };
     store!.documents[existingIdx] = fullDoc;
+    saveStore();
+    return fullDoc;
   } else {
+    const fullDoc: StoredDocument = { ...doc, id: generateId(), created_at: now, updated_at: now };
     store!.documents.push(fullDoc);
+    saveStore();
+    return fullDoc;
   }
-  saveStore();
-
-  return fullDoc;
 }
 
 export function storeEvent(event: Omit<StoredEvent, "id" | "created_at">): StoredEvent {
@@ -125,6 +137,16 @@ export function getRecentEvents(projectId: string | null, limit: number = 50): S
     filtered = filtered.filter((e) => e.project_id === projectId);
   }
   return [...filtered].reverse().slice(0, limit);
+}
+
+export function getIndexedDocuments(projectId?: string, limit: number = 1000): StoredDocument[] {
+  if (!store) openDb();
+  const filtered = store!.documents.filter((doc) =>
+    doc.scope === "global" || !projectId || doc.project_id === projectId
+  );
+  return [...filtered]
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+    .slice(0, limit);
 }
 
 export function createWriterJob(job: Omit<WriterJob, "id" | "created_at" | "updated_at">): WriterJob {
@@ -156,4 +178,20 @@ export function getPendingWriterJobs(): WriterJob[] {
   return store!.writer_jobs
     .filter((j) => j.status === "pending")
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+export function getWriterJob(id: string): WriterJob | undefined {
+  if (!store) openDb();
+  return store!.writer_jobs.find((j) => j.id === id);
+}
+
+export function getRecentWriterJobs(projectId: string | null, sessionId: string | null, limit: number = 20): WriterJob[] {
+  if (!store) openDb();
+  return store!.writer_jobs
+    .filter((j) =>
+      (projectId === null || j.project_id === projectId) &&
+      (sessionId === null || j.session_id === sessionId)
+    )
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .slice(0, limit);
 }

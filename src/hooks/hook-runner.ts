@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { spawn } from "node:child_process";
 import {
   loadConfig,
   ensureDataDir,
@@ -11,14 +12,23 @@ import {
   readMemory,
   writeMemory,
   callWriter,
-  buildWriterPrompt,
   getRecentEvents,
+  createWriterJob,
+  updateWriterJob,
+  getWriterJob,
+  getRecentWriterJobs,
   indexDocument,
   sha256,
-  redactSecrets,
+  redactText,
+  redactValue,
   truncate,
   closeDb,
+  resolveApiKey,
+  parseTranscriptFile,
+  getTranscriptTail,
+  applyMemoryPatch,
 } from "../index.js";
+import type { ProjectInfo, WriterInput, WriterOutput } from "../index.js";
 
 interface HookInput {
   session_id?: string;
@@ -26,12 +36,22 @@ interface HookInput {
   hook_event_name?: string;
   tool_name?: string;
   tool_input?: Record<string, unknown>;
-  tool_output?: string;
-  tool_error?: string;
+  tool_response?: unknown;
+  tool_output?: unknown;
+  error?: unknown;
+  tool_error?: unknown;
+  prompt?: string;
   user_prompt?: string;
   transcript_path?: string;
+  compact_summary?: string;
+  compacted_summary?: string;
+  summary?: string;
+  stop_hook_active?: boolean;
   [key: string]: unknown;
 }
+
+const STOP_THROTTLE_MS = 10 * 60 * 1000;
+const SESSION_END_THROTTLE_MS = 30 * 1000;
 
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -83,7 +103,7 @@ async function handleUserPromptSubmit(input: HookInput): Promise<void> {
 
   const cwd = input.cwd || process.cwd();
   const project = resolveProjectId(cwd);
-  const prompt = input.user_prompt || "";
+  const prompt = input.prompt || input.user_prompt || "";
 
   log("INFO", "UserPromptSubmit", { sessionId: input.session_id, promptLength: prompt.length });
 
@@ -114,9 +134,11 @@ async function handlePostToolUse(input: HookInput, eventType: string): Promise<v
   const project = resolveProjectId(cwd);
 
   const toolName = input.tool_name || "unknown";
-  const toolInput = input.tool_input || {};
-  const toolOutput = input.tool_output ? truncate(redactSecrets(String(input.tool_output)), 500) : "";
-  const toolError = input.tool_error ? truncate(redactSecrets(String(input.tool_error)), 500) : "";
+  const toolInputSummary = summarizeHookValue(input.tool_input || {});
+  const toolResponse = eventType === "post_tool_use_failure"
+    ? input.error ?? input.tool_error ?? ""
+    : input.tool_response ?? input.tool_output ?? "";
+  const toolResponseSummary = summarizeHookValue(toolResponse, 500);
 
   log("INFO", eventType, { tool: toolName, sessionId: input.session_id });
 
@@ -128,9 +150,9 @@ async function handlePostToolUse(input: HookInput, eventType: string): Promise<v
       source: toolName,
       body_json: JSON.stringify({
         tool: toolName,
-        input_summary: truncate(JSON.stringify(toolInput), 300),
-        output_summary: toolOutput,
-        error_summary: toolError,
+        input_summary: toolInputSummary,
+        output_summary: eventType === "post_tool_use" ? toolResponseSummary : "",
+        error_summary: eventType === "post_tool_use_failure" ? toolResponseSummary : "",
         cwd,
         branch: project.branch,
       }),
@@ -152,14 +174,14 @@ async function handlePostCompact(input: HookInput): Promise<void> {
   log("INFO", "PostCompact", { sessionId: input.session_id });
 
   try {
-    const content = input.compacted_summary || input.summary || "";
+    const content = input.compact_summary || input.compacted_summary || input.summary || "";
     if (content) {
       storeEvent({
         session_id: input.session_id || null,
         project_id: project.projectId,
         event_type: "compact",
         source: "system",
-        body_json: JSON.stringify({ summary: truncate(redactSecrets(String(content)), 5000) }),
+        body_json: JSON.stringify({ summary: truncate(redactText(String(content)), 5000) }),
       });
     }
   } catch (e) {
@@ -169,7 +191,86 @@ async function handlePostCompact(input: HookInput): Promise<void> {
   outputJson({});
 }
 
-async function handleStop(input: HookInput): Promise<void> {
+function summarizeHookValue(value: unknown, maxLen: number = 300): string {
+  const redacted = redactValue(value);
+  const text = typeof redacted === "string" ? redacted : JSON.stringify(redacted);
+  return truncate(redactText(text), maxLen);
+}
+
+function buildTranscriptContext(input: HookInput): Pick<WriterInput, "summary" | "toolEvents" | "transcriptTail"> | null {
+  const transcriptPath = typeof input.transcript_path === "string" ? input.transcript_path : "";
+  if (!transcriptPath || !existsSync(transcriptPath)) return null;
+
+  try {
+    const parsed = parseTranscriptFile(transcriptPath);
+    const tail = getTranscriptTail(parsed.entries, 30);
+    return {
+      summary: parsed.summary,
+      toolEvents: parsed.toolEvents
+        .map((event) => {
+          const inputSummary = summarizeHookValue(event.input, 300);
+          const resultSummary = event.result ? summarizeHookValue(event.result, 500) : "";
+          return `${event.tool}: ${inputSummary}${resultSummary ? ` => ${resultSummary}` : ""}`;
+        })
+        .join("\n"),
+      transcriptTail: truncate(redactText(JSON.stringify(redactValue(tail), null, 2)), 8000),
+    };
+  } catch (e) {
+    log("WARN", `Failed to parse transcript: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  }
+}
+
+function buildWriterInput(input: HookInput, project: ProjectInfo): WriterInput {
+  const projectMemory = readMemory("project", project.projectId, "MEMORY.md");
+  const globalMemory = readMemory("global", undefined, "MEMORY.md");
+  const checkpoint = readMemory("project", project.projectId, "checkpoint.md");
+  const notes = readMemory("project", project.projectId, "notes.md");
+  const events = getRecentEvents(project.projectId, 30);
+  const transcriptContext = buildTranscriptContext(input);
+
+  return redactValue({
+    projectMemory,
+    globalMemory,
+    checkpoint,
+    notes,
+    transcriptTail: transcriptContext?.transcriptTail || events.map((e) => `${e.event_type}: ${e.source}`).join("\n"),
+    summary: transcriptContext?.summary || `${events.length} events recorded`,
+    toolEvents: transcriptContext?.toolEvents || events
+      .filter((e) => e.event_type.startsWith("post_tool"))
+      .map((e) => {
+        try {
+          const body = JSON.parse(e.body_json);
+          return `${body.tool}: ${body.input_summary || body.error_summary || ""}`;
+        } catch {
+          return e.source;
+        }
+      })
+      .join("\n"),
+    cwd: input.cwd || process.cwd(),
+    branch: project.branch,
+    projectId: project.projectId,
+  });
+}
+
+function shouldThrottleWriter(projectId: string, sessionId: string | null, windowMs: number): boolean {
+  const recent = getRecentWriterJobs(projectId, sessionId, 10);
+  const cutoff = Date.now() - windowMs;
+  return recent.some((job) => Date.parse(job.created_at) >= cutoff);
+}
+
+function spawnWriterWorker(jobId: string): void {
+  const script = process.argv[1];
+  if (!script) return;
+  const child = spawn(process.execPath, [script, "ProcessWriterJob", jobId], {
+    detached: true,
+    stdio: "ignore",
+    env: process.env,
+  });
+  child.unref();
+}
+
+async function handleWriterTrigger(input: HookInput, eventName: "Stop" | "SessionEnd"): Promise<void> {
   const dataDir = ensureDataDir();
   initLogger(dataDir);
 
@@ -177,78 +278,105 @@ async function handleStop(input: HookInput): Promise<void> {
   const project = resolveProjectId(cwd);
   const config = loadConfig();
 
-  log("INFO", "Stop/SessionEnd", { sessionId: input.session_id });
+  log("INFO", eventName, { sessionId: input.session_id });
 
-  if (!config.writer.enabled) {
+  if (!config.writer.enabled || input.stop_hook_active) {
     outputJson({});
     closeDb();
     return;
   }
 
   try {
-    const projectMemory = readMemory("project", project.projectId, "MEMORY.md");
-    const globalMemory = readMemory("global", undefined, "MEMORY.md");
-    const checkpoint = readMemory("project", project.projectId, "checkpoint.md");
-    const notes = readMemory("project", project.projectId, "notes.md");
-    const events = getRecentEvents(project.projectId, 30);
-
-    const writerInput = {
-      projectMemory,
-      globalMemory,
-      checkpoint,
-      notes,
-      transcriptTail: events.map((e) => `${e.event_type}: ${e.source}`).join("\n"),
-      summary: `${events.length} events recorded`,
-      toolEvents: events
-        .filter((e) => e.event_type.startsWith("post_tool"))
-        .map((e) => {
-          try {
-            const body = JSON.parse(e.body_json);
-            return `${body.tool}: ${body.input_summary || ""}`;
-          } catch {
-            return e.source;
-          }
-        })
-        .join("\n"),
-      cwd,
-      branch: project.branch,
-      projectId: project.projectId,
-    };
-
-    const result = await callWriter(writerInput);
-
-    if (result.checkpoint_markdown) {
-      writeMemory("project", project.projectId, "checkpoint.md", result.checkpoint_markdown);
-    }
-    if (result.project_memory_patch.mode !== "none" && result.project_memory_patch.markdown) {
-      writeMemory("project", project.projectId, "MEMORY.md", result.project_memory_patch.markdown);
-    }
-    if (result.global_memory_patch.mode !== "none" && result.global_memory_patch.markdown) {
-      writeMemory("global", undefined, "MEMORY.md", result.global_memory_patch.markdown);
-    }
-    if (result.notes_markdown) {
-      writeMemory("project", project.projectId, "notes.md", result.notes_markdown);
-    }
-    if (result.index_summary) {
-      indexDocument({
-        scope: "project",
-        project_id: project.projectId,
-        session_id: input.session_id || null,
-        type: "summary",
-        path: null,
-        title: "Session Summary",
-        body: result.index_summary,
-        fingerprint: sha256(result.index_summary),
-      });
+    const sessionId = input.session_id || null;
+    const throttleMs = eventName === "Stop" ? STOP_THROTTLE_MS : SESSION_END_THROTTLE_MS;
+    if (shouldThrottleWriter(project.projectId, sessionId, throttleMs)) {
+      log("INFO", "Writer enqueue throttled", { eventName, sessionId });
+      outputJson({});
+      closeDb();
+      return;
     }
 
-    log("INFO", "Writer completed", { warnings: result.warnings });
+    const writerInput = buildWriterInput(input, project);
+    const job = createWriterJob({
+      session_id: sessionId,
+      project_id: project.projectId,
+      status: "pending",
+      input_json: JSON.stringify(writerInput),
+      error: null,
+    });
+
+    if (resolveApiKey(config)) {
+      spawnWriterWorker(job.id);
+    }
+    log("INFO", "Writer job queued", { jobId: job.id, eventName });
   } catch (e) {
-    log("ERROR", `Writer failed: ${e instanceof Error ? e.message : String(e)}`);
+    log("ERROR", `Writer enqueue failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 
   closeDb();
   outputJson({});
+}
+
+function applyWriterResult(result: WriterOutput, input: WriterInput, sessionId: string | null): void {
+  if (result.checkpoint_markdown) {
+    writeMemory("project", input.projectId, "checkpoint.md", result.checkpoint_markdown);
+  }
+
+  const updatedProjectMemory = applyMemoryPatch(input.projectMemory, result.project_memory_patch);
+  if (updatedProjectMemory !== null) {
+    writeMemory("project", input.projectId, "MEMORY.md", updatedProjectMemory);
+  }
+
+  const updatedGlobalMemory = applyMemoryPatch(input.globalMemory, result.global_memory_patch);
+  if (updatedGlobalMemory !== null) {
+    writeMemory("global", undefined, "MEMORY.md", updatedGlobalMemory);
+  }
+
+  if (result.notes_markdown) {
+    writeMemory("project", input.projectId, "notes.md", result.notes_markdown);
+  }
+
+  if (result.index_summary) {
+    indexDocument({
+      scope: "project",
+      project_id: input.projectId,
+      session_id: sessionId,
+      type: "summary",
+      path: null,
+      title: "Session Summary",
+      body: result.index_summary,
+      fingerprint: sha256(result.index_summary),
+    });
+  }
+}
+
+async function processWriterJob(jobId: string): Promise<void> {
+  const dataDir = ensureDataDir();
+  initLogger(dataDir);
+
+  const job = getWriterJob(jobId);
+  if (!job) {
+    log("WARN", `Writer job not found: ${jobId}`);
+    return;
+  }
+  if (job.status !== "pending") {
+    return;
+  }
+
+  updateWriterJob(job.id, "running");
+  try {
+    const writerInput = JSON.parse(job.input_json) as WriterInput;
+    const result = await callWriter(writerInput);
+    applyWriterResult(result, writerInput, job.session_id);
+    updateWriterJob(job.id, "completed");
+    log("INFO", "Writer completed", { jobId: job.id, warnings: result.warnings });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    updateWriterJob(job.id, "pending", message);
+    log("ERROR", `Writer failed: ${message}`);
+  } finally {
+    closeDb();
+  }
 }
 
 export async function runHook(): Promise<void> {
@@ -256,6 +384,11 @@ export async function runHook(): Promise<void> {
     const raw = await readStdin();
     const input = parseInput(raw);
     const eventName = input.hook_event_name || process.argv[2] || "";
+
+    if (eventName === "ProcessWriterJob") {
+      await processWriterJob(String(process.argv[3] || ""));
+      return;
+    }
 
     switch (eventName) {
       case "SessionStart":
@@ -274,8 +407,10 @@ export async function runHook(): Promise<void> {
         await handlePostCompact(input);
         break;
       case "Stop":
+        await handleWriterTrigger(input, "Stop");
+        break;
       case "SessionEnd":
-        await handleStop(input);
+        await handleWriterTrigger(input, "SessionEnd");
         break;
       default:
         log("WARN", `Unknown hook event: ${eventName}`);

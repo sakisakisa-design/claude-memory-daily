@@ -47,7 +47,7 @@ Relevant MiMoCode ideas to port conceptually:
 - `MEMORY.md` for project-level persistent knowledge.
 - `checkpoint.md` for structured session state.
 - `notes.md` as scratch space.
-- SQLite FTS5-style indexing for local memory search.
+- Local indexed search; v0 uses a JSON store plus plain-text search, with SQLite FTS5 left as a future option.
 - Budgeted memory injection.
 - Checkpoint writer as a separate actor/process, not part of the main agent loop.
 - Dream-like memory cleanup and consolidation.
@@ -130,7 +130,7 @@ Example config:
   "enabled": true,
   "storage": {
     "scope": "user",
-    "index": "sqlite-fts5",
+    "index": "json-plain-text",
     "maxInjectedChars": 12000
   },
   "writer": {
@@ -261,7 +261,7 @@ Data layout:
 ```text
 ${CLAUDE_PLUGIN_DATA}/
   config.json
-  memory.sqlite
+  store.json
   logs/
     cmh.log
   raw/
@@ -286,18 +286,21 @@ Project ID strategy:
 
 - Prefer stable git remote URL hash + repo root path hash.
 - Fall back to cwd hash if not inside a git repo.
-- Store a human-readable alias in SQLite for diagnostics.
+- Store a human-readable alias in local metadata for diagnostics.
 
 ## 6.3 Storage
 
 Use local storage only.
 
-Primary v1 storage:
+Implemented v0 storage:
 
 - Markdown files for user-editable memory.
-- SQLite database for indexing and raw metadata.
-- SQLite FTS5 for search if available.
-- Fallback to a pure JS plain-text search if SQLite FTS5 is unavailable.
+- JSON store for indexed documents, hook events, and writer jobs.
+- Plain-text search across memory files and indexed documents.
+
+Future storage option:
+
+- SQLite database with FTS5 can replace the JSON store later if needed.
 
 Suggested tables:
 
@@ -492,7 +495,7 @@ Output:
 - optional patch to project `MEMORY.md`
 - optional patch to global `MEMORY.md`
 - optional cleaned `notes.md`
-- event summary for SQLite index
+- event summary for the local search index
 
 The writer must use a structured response format.
 
@@ -502,12 +505,12 @@ Preferred writer output schema:
 {
   "checkpoint_markdown": "...",
   "project_memory_patch": {
-    "mode": "replace-section-or-append",
-    "markdown": "..."
+    "mode": "none|replace-full",
+    "markdown": "complete replacement MEMORY.md when mode is replace-full"
   },
   "global_memory_patch": {
-    "mode": "none|replace-section-or-append",
-    "markdown": "..."
+    "mode": "none|replace-full",
+    "markdown": "complete replacement MEMORY.md when mode is replace-full"
   },
   "notes_markdown": "...",
   "index_summary": "...",
@@ -705,7 +708,7 @@ Deliver:
 - config loader
 - project ID resolver
 - data directory manager
-- SQLite or fallback search store
+- JSON plain-text search store
 - markdown memory files
 - index/reindex command
 
@@ -919,4 +922,3 @@ Important implementation guidance:
 - Do not turn one-off user instructions into permanent memory.
 - Use explicit logs and `cmh doctor` for troubleshooting.
 - Optimize for ordinary users who do not want to understand the internals.
-

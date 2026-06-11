@@ -1,0 +1,6 @@
+{
+  "hook_event_name": "PostCompact",
+  "session_id": "test-session-001",
+  "cwd": "/tmp/test-project",
+  "compact_summary": "User asked to fix login tests; auth module uses JWT tokens."
+}
