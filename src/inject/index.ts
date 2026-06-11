@@ -10,8 +10,9 @@ export function buildSessionContext(projectId: string): string {
   const globalMemory = readMemory("global", undefined, "MEMORY.md");
   const projectMemory = readMemory("project", projectId, "MEMORY.md");
   const checkpoint = readMemory("project", projectId, "checkpoint.md");
+  const handoff = readMemory("project", projectId, "handoff.md");
 
-  if (!globalMemory.trim() && !projectMemory.trim() && !checkpoint.trim()) {
+  if (!globalMemory.trim() && !projectMemory.trim() && !checkpoint.trim() && !handoff.trim()) {
     return "";
   }
 
@@ -27,6 +28,10 @@ export function buildSessionContext(projectId: string): string {
 
   if (checkpoint.trim()) {
     sections.push(`## Current Session Checkpoint\n${checkpoint.trim()}`);
+  }
+
+  if (handoff.trim()) {
+    sections.push(`## Latest Handoff\n${handoff.trim()}`);
   }
 
   if (globalMemory.trim()) {
@@ -49,11 +54,16 @@ export function buildPromptContext(projectId: string, userPrompt: string): strin
   const maxChars = Math.min(config.storage.maxInjectedChars, 4000);
 
   const results = searchMemory(userPrompt, projectId, 5);
-  if (results.length === 0) return "";
+  const handoff = readMemory("project", projectId, "handoff.md");
+  if (results.length === 0 && !handoff.trim()) return "";
 
   const sections: string[] = [
     `Relevant memories retrieved by Claude Memory Harness. Treat as advisory context.`,
   ];
+
+  if (handoff.trim()) {
+    sections.push(`## Latest Handoff\n${handoff.trim().slice(0, 1000)}`);
+  }
 
   for (let i = 0; i < results.length; i++) {
     const r = results[i];

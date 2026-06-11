@@ -1,0 +1,8 @@
+{
+  "hook_event_name": "PreCompact",
+  "session_id": "test-session-001",
+  "cwd": "/tmp/test-project",
+  "transcript_path": "__TRANSCRIPT_SIMPLE__",
+  "trigger": "manual",
+  "custom_instructions": "Keep implementation status and test results."
+}

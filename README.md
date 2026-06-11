@@ -8,6 +8,7 @@ A local memory plugin for Claude Code that provides cross-session memory through
 - **Local storage**: All data stays on your machine (JSON store + Markdown files)
 - **Searchable memory**: Plain-text search across project/global memory and indexed summaries
 - **Optional checkpoints**: Writes structured session checkpoints via a configurable writer model when enabled
+- **Safe handoff**: Generates `handoff.md` before/after compaction without mutating Claude Code transcripts
 - **Project and global memory**: Per-project memory files plus optional global memory
 - **Privacy-first**: No cloud sync, no data leaves your machine except configured writer calls
 - **Dream consolidation**: Manual memory cleanup and deduplication command
@@ -60,6 +61,11 @@ Config file location: `~/.cmh/config.json`
     "index": "json-plain-text",
     "maxInjectedChars": 12000
   },
+  "handoff": {
+    "enabled": true,
+    "maxChars": 12000,
+    "maxTranscriptEntries": 30
+  },
   "writer": {
     "enabled": false,
     "provider": "openai-compatible",
@@ -84,6 +90,9 @@ Config file location: `~/.cmh/config.json`
 |-----|-------------|---------|
 | `enabled` | Enable/disable the plugin | `true` |
 | `storage.maxInjectedChars` | Max characters injected into context | `12000` |
+| `handoff.enabled` | Enable handoff generation on compact hooks | `true` |
+| `handoff.maxChars` | Max characters in generated handoff.md | `12000` |
+| `handoff.maxTranscriptEntries` | Transcript tail entries included in handoff | `30` |
 | `writer.enabled` | Enable checkpoint writing | `false` |
 | `writer.baseURL` | OpenAI-compatible API base URL | `https://api.openai.com/v1` |
 | `writer.apiKeyEnv` | Environment variable name for API key | `OPENAI_API_KEY` |
@@ -109,6 +118,9 @@ cmh memory reindex       # Reindex memory into search
 cmh checkpoint now       # Write a checkpoint now
 cmh checkpoint now --dry-run  # Preview checkpoint prompt
 cmh checkpoint show      # Show current checkpoint
+cmh handoff              # Generate handoff.md for the current project
+cmh handoff --show       # Show the current handoff
+cmh forge dry-run <transcript>  # Inspect a transcript forge plan without writing files
 cmh dream                # Consolidate memory (dry run)
 cmh dream --apply        # Apply memory consolidation
 cmh forget project --confirm  # Clear project memory
@@ -133,10 +145,12 @@ cmh forget checkpoint --confirm  # Clear checkpoint
 2. **UserPromptSubmit**: Searches memory for relevant context based on the prompt
 3. **PostToolUse**: Records high-signal tool events (file writes, bash commands)
 4. **PostToolUseFailure**: Records failure events
-5. **PostCompact**: Captures compacted session summaries
-6. **Stop / SessionEnd**: Enqueues throttled checkpoint writer work; configured writer calls run in a background worker
+5. **PreCompact**: Writes a safe handoff before compaction
+6. **PostCompact**: Captures compacted session summaries and refreshes handoff
+7. **Stop / SessionEnd**: Enqueues throttled checkpoint writer work; configured writer calls run in a background worker
 
 Claude Code has its own auto memory at `~/.claude/projects/<project>/memory/`. Claude Memory Harness stores plugin data separately in Claude's plugin data directory and does not read or write Claude Code's auto-memory files. Keep the harness writer disabled unless you explicitly want an additional checkpoint layer.
+Forge is dry-run only in v0: it reports a proposed session id, retained event count, token estimate, and output path, but never writes forged JSONL or overwrites the original transcript.
 
 ### Memory Files
 
@@ -152,6 +166,7 @@ Claude Code has its own auto memory at `~/.claude/projects/<project>/memory/`. C
         MEMORY.md
         checkpoint.md
         notes.md
+        handoff.md
 ```
 
 ### Project ID

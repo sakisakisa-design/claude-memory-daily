@@ -21,6 +21,11 @@ export interface CMHConfig {
     index: string;
     maxInjectedChars: number;
   };
+  handoff: {
+    enabled: boolean;
+    maxChars: number;
+    maxTranscriptEntries: number;
+  };
   writer: WriterConfig;
   /**
    * Retained for config compatibility and future non-sensitive display tuning.
@@ -40,6 +45,11 @@ const DEFAULT_CONFIG: CMHConfig = {
     scope: "user",
     index: "json-plain-text",
     maxInjectedChars: 12000,
+  },
+  handoff: {
+    enabled: true,
+    maxChars: 12000,
+    maxTranscriptEntries: 30,
   },
   writer: {
     enabled: false,

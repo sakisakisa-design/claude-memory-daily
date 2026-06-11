@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, rmSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -90,5 +90,48 @@ describe("database (JSON store)", () => {
     updateWriterJob(pending[0].id, "completed");
     const afterUpdate = getPendingWriterJobs();
     expect(afterUpdate.length).toBe(0);
+  });
+
+  it("preserves concurrent event and writer job writes", async () => {
+    const { storeEvent, getRecentEvents, createWriterJob, getPendingWriterJobs } = await import("./db.js");
+
+    await Promise.all(Array.from({ length: 25 }, async (_, i) => {
+      storeEvent({
+        session_id: `sess-${i}`,
+        project_id: "proj-concurrent",
+        event_type: "post_tool_use",
+        source: "Bash",
+        body_json: JSON.stringify({ i }),
+      });
+      createWriterJob({
+        session_id: `sess-${i}`,
+        project_id: "proj-concurrent",
+        status: "pending",
+        input_json: JSON.stringify({ i }),
+        error: null,
+      });
+    }));
+
+    expect(getRecentEvents("proj-concurrent", 100)).toHaveLength(25);
+    expect(getPendingWriterJobs().filter((job) => job.project_id === "proj-concurrent")).toHaveLength(25);
+    expect(readdirSync(testDataDir).some((name) => name.endsWith(".tmp") || name.endsWith(".lock"))).toBe(false);
+  });
+
+  it("preserves concurrent writer job updates", async () => {
+    const { createWriterJob, updateWriterJob, getPendingWriterJobs, getRecentWriterJobs } = await import("./db.js");
+    const jobs = Array.from({ length: 20 }, (_, i) => createWriterJob({
+      session_id: `sess-update-${i}`,
+      project_id: "proj-updates",
+      status: "pending",
+      input_json: JSON.stringify({ i }),
+      error: null,
+    }));
+
+    await Promise.all(jobs.map(async (job, i) => {
+      updateWriterJob(job.id, "completed", `done-${i}`);
+    }));
+
+    expect(getPendingWriterJobs().filter((job) => job.project_id === "proj-updates")).toHaveLength(0);
+    expect(getRecentWriterJobs("proj-updates", null, 100).filter((job) => job.status === "completed")).toHaveLength(20);
   });
 });

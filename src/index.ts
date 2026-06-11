@@ -23,6 +23,8 @@ export type { SearchResult } from "./search/index.js";
 export { parseTranscript, parseTranscriptFile, getTranscriptTail } from "./transcript/index.js";
 export type { TranscriptEntry, ParsedTranscript, ToolEvent } from "./transcript/index.js";
 export { buildSessionContext, buildPromptContext } from "./inject/index.js";
+export { buildHandoffMarkdown, writeHandoff } from "./handoff/index.js";
+export type { HandoffInput } from "./handoff/index.js";
 export { callWriter, parseWriterOutput, buildWriterPrompt, createMockWriterOutput, applyMemoryPatch } from "./writer/index.js";
 export type { WriterInput, WriterOutput } from "./writer/index.js";
 export { redactSecrets, redactEnvValues, redactText, redactValue, containsSecret } from "./redaction/index.js";

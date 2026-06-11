@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -49,6 +49,20 @@ function writeTestConfig(config) {
 
 function readStore() {
   return JSON.parse(readFileSync(storePath, "utf-8"));
+}
+
+function findFile(root, name) {
+  if (!existsSync(root)) return null;
+  for (const entry of readdirSync(root)) {
+    const path = join(root, entry);
+    if (statSync(path).isDirectory()) {
+      const found = findFile(path, name);
+      if (found) return found;
+    } else if (entry === name) {
+      return path;
+    }
+  }
+  return null;
 }
 
 console.log("Smoke test: Claude Memory Harness hooks\n");
@@ -146,8 +160,20 @@ try {
   assert(false, `PostToolUseFailure hook: ${e.message}`);
 }
 
-// Test 7: PostCompact
-console.log("\n7. PostCompact hook:");
+// Test 7: PreCompact
+console.log("\n7. PreCompact hook:");
+try {
+  const result = runHook("pre-compact.json", "PreCompact");
+  assert(typeof result === "object", "returns valid JSON object");
+  const handoffPath = findFile(join(testDataDir, "memories", "projects"), "handoff.md");
+  assert(!!handoffPath, "writes handoff.md");
+  assert(readFileSync(handoffPath, "utf-8").includes("PreCompact instructions"), "handoff includes compact instructions");
+} catch (e) {
+  assert(false, `PreCompact hook: ${e.message}`);
+}
+
+// Test 8: PostCompact
+console.log("\n8. PostCompact hook:");
 try {
   const result = runHook("post-compact.json", "PostCompact");
   assert(typeof result === "object", "returns valid JSON object");
@@ -155,8 +181,8 @@ try {
   assert(false, `PostCompact hook: ${e.message}`);
 }
 
-// Test 8: Empty input
-console.log("\n8. Empty input handling:");
+// Test 9: Empty input
+console.log("\n9. Empty input handling:");
 try {
   const result = execSync(`node ${hookRunner} SessionStart`, {
     input: "",

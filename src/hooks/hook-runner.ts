@@ -27,6 +27,7 @@ import {
   parseTranscriptFile,
   getTranscriptTail,
   applyMemoryPatch,
+  writeHandoff,
 } from "../index.js";
 import type { ProjectInfo, WriterInput, WriterOutput } from "../index.js";
 
@@ -46,6 +47,8 @@ interface HookInput {
   compact_summary?: string;
   compacted_summary?: string;
   summary?: string;
+  trigger?: string;
+  custom_instructions?: string;
   stop_hook_active?: boolean;
   [key: string]: unknown;
 }
@@ -173,8 +176,8 @@ async function handlePostCompact(input: HookInput): Promise<void> {
 
   log("INFO", "PostCompact", { sessionId: input.session_id });
 
+  const content = input.compact_summary || input.compacted_summary || input.summary || "";
   try {
-    const content = input.compact_summary || input.compacted_summary || input.summary || "";
     if (content) {
       storeEvent({
         session_id: input.session_id || null,
@@ -184,11 +187,42 @@ async function handlePostCompact(input: HookInput): Promise<void> {
         body_json: JSON.stringify({ summary: truncate(redactText(String(content)), 5000) }),
       });
     }
+    writeHandoffIfEnabled(input, project, String(content || ""));
   } catch (e) {
     log("WARN", "Failed to store compact event");
   }
 
   outputJson({});
+}
+
+async function handlePreCompact(input: HookInput): Promise<void> {
+  const dataDir = ensureDataDir();
+  initLogger(dataDir);
+
+  const cwd = input.cwd || process.cwd();
+  const project = resolveProjectId(cwd);
+  log("INFO", "PreCompact", { sessionId: input.session_id, trigger: input.trigger });
+
+  try {
+    writeHandoffIfEnabled(input, project, input.custom_instructions ? `PreCompact instructions: ${input.custom_instructions}` : "");
+  } catch (e) {
+    log("WARN", `Failed to write pre-compact handoff: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  outputJson({});
+}
+
+function writeHandoffIfEnabled(input: HookInput, project: ProjectInfo, compactSummary: string): void {
+  const config = loadConfig();
+  if (!config.handoff.enabled) return;
+  writeHandoff({
+    projectId: project.projectId,
+    sessionId: input.session_id || null,
+    cwd: input.cwd || process.cwd(),
+    branch: project.branch,
+    compactSummary,
+    transcriptPath: typeof input.transcript_path === "string" ? input.transcript_path : undefined,
+  });
 }
 
 function summarizeHookValue(value: unknown, maxLen: number = 300): string {
@@ -405,6 +439,9 @@ export async function runHook(): Promise<void> {
         break;
       case "PostCompact":
         await handlePostCompact(input);
+        break;
+      case "PreCompact":
+        await handlePreCompact(input);
         break;
       case "Stop":
         await handleWriterTrigger(input, "Stop");

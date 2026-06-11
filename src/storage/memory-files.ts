@@ -76,7 +76,7 @@ export function listMemoryFiles(projectId?: string): MemoryFile[] {
   if (projectId) {
     const pdir = projectDir(projectId);
     if (existsSync(pdir)) {
-      for (const name of ["MEMORY.md", "checkpoint.md", "notes.md"]) {
+      for (const name of ["MEMORY.md", "checkpoint.md", "notes.md", "handoff.md"]) {
         const path = join(pdir, name);
         if (existsSync(path)) {
           files.push({ scope: "project", projectId, name, path });

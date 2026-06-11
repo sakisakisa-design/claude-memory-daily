@@ -9,6 +9,8 @@ import { memoryCmd } from "./commands/memory.js";
 import { checkpointCmd } from "./commands/checkpoint.js";
 import { dreamCmd } from "./commands/dream.js";
 import { forgetCmd } from "./commands/forget.js";
+import { handoffCmd } from "./commands/handoff.js";
+import { forgeCmd } from "./commands/forge.js";
 
 const program = new Command();
 
@@ -25,5 +27,7 @@ program.addCommand(memoryCmd);
 program.addCommand(checkpointCmd);
 program.addCommand(dreamCmd);
 program.addCommand(forgetCmd);
+program.addCommand(handoffCmd);
+program.addCommand(forgeCmd);
 
 program.parse();

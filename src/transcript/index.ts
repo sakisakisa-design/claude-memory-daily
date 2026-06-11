@@ -22,6 +22,7 @@ export interface ParsedTranscript {
 }
 
 export interface ToolEvent {
+  toolUseId?: string;
   tool: string;
   input: Record<string, unknown>;
   result?: string;
@@ -40,6 +41,7 @@ export function parseTranscript(raw: string): ParsedTranscript {
   const lines = raw.split("\n").filter((l) => l.trim());
   const entries: TranscriptEntry[] = [];
   const toolEvents: ToolEvent[] = [];
+  const toolEventsById = new Map<string, ToolEvent>();
 
   for (const line of lines) {
     try {
@@ -47,21 +49,13 @@ export function parseTranscript(raw: string): ParsedTranscript {
       const sanitized = sanitizeEntry(entry);
       entries.push(sanitized);
 
-      if (sanitized.tool) {
-        toolEvents.push({
-          tool: sanitized.tool,
-          input: (sanitized.tool_input as Record<string, unknown>) || {},
-          result: sanitized.tool_result as string | undefined,
-          success: sanitized.type !== "tool_error",
-          timestamp: sanitized.timestamp as string | undefined,
-        });
-      }
+      extractToolEvents(sanitized, toolEvents, toolEventsById);
     } catch {
       // skip malformed lines
     }
   }
 
-  const summary = buildSummary(entries);
+  const summary = buildSummary(entries, toolEvents);
   return { entries, summary, toolEvents };
 }
 
@@ -82,19 +76,84 @@ function sanitizeEntry(entry: TranscriptEntry): TranscriptEntry {
   return result;
 }
 
-function buildSummary(entries: TranscriptEntry[]): string {
+function extractToolEvents(
+  entry: TranscriptEntry,
+  toolEvents: ToolEvent[],
+  toolEventsById: Map<string, ToolEvent>
+): void {
+  const timestamp = entry.timestamp as string | undefined;
+  if (entry.tool) {
+    toolEvents.push({
+      tool: entry.tool,
+      input: (entry.tool_input as Record<string, unknown>) || {},
+      result: entry.tool_result as string | undefined,
+      success: entry.type !== "tool_error",
+      timestamp,
+    });
+  }
+
+  const message = entry.message as { content?: unknown } | undefined;
+  const content = message?.content;
+  if (Array.isArray(content)) {
+    for (const item of content) {
+      if (!item || typeof item !== "object") continue;
+      const block = item as Record<string, unknown>;
+      if (block.type === "tool_use") {
+        const toolUseId = typeof block.id === "string" ? block.id : undefined;
+        const toolEvent: ToolEvent = {
+          toolUseId,
+          tool: typeof block.name === "string" ? block.name : "unknown",
+          input: isRecord(block.input) ? block.input : {},
+          success: true,
+          timestamp,
+        };
+        toolEvents.push(toolEvent);
+        if (toolUseId) toolEventsById.set(toolUseId, toolEvent);
+      } else if (block.type === "tool_result") {
+        const toolUseId = typeof block.tool_use_id === "string" ? block.tool_use_id : undefined;
+        const existing = toolUseId ? toolEventsById.get(toolUseId) : undefined;
+        if (existing) {
+          existing.result = stringifyContent(block.content);
+          existing.success = block.is_error !== true;
+        }
+      }
+    }
+  }
+
+  if (entry.toolUseResult !== undefined && typeof entry.sourceToolAssistantUUID === "string") {
+    const existing = toolEventsById.get(entry.sourceToolAssistantUUID);
+    if (existing) {
+      existing.result = stringifyContent(entry.toolUseResult);
+    }
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringifyContent(value: unknown): string {
+  if (typeof value === "string") return truncate(redactText(value), MAX_ENTRY_LENGTH);
+  return truncate(redactText(JSON.stringify(redactValue(value))), MAX_ENTRY_LENGTH);
+}
+
+function buildSummary(entries: TranscriptEntry[], toolEvents: ToolEvent[]): string {
   const toolCounts: Record<string, number> = {};
   let fileOps = 0;
   let bashOps = 0;
   let errors = 0;
 
+  for (const event of toolEvents) {
+    toolCounts[event.tool] = (toolCounts[event.tool] || 0) + 1;
+    if (event.tool === "Write" || event.tool === "Edit" || event.tool === "Read") fileOps++;
+    if (event.tool === "Bash") bashOps++;
+    if (!event.success) errors++;
+  }
+
   for (const e of entries) {
-    if (e.tool) {
-      toolCounts[e.tool] = (toolCounts[e.tool] || 0) + 1;
-      if (e.tool === "Write" || e.tool === "Edit" || e.tool === "Read") fileOps++;
-      if (e.tool === "Bash") bashOps++;
+    if (!e.tool && (e.type === "tool_error" || e.type === "error")) {
+      errors++;
     }
-    if (e.type === "tool_error" || e.type === "error") errors++;
   }
 
   const parts = [`Session: ${entries.length} entries`];
