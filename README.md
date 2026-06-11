@@ -1,13 +1,13 @@
 # Claude Memory Harness
 
-A local memory plugin for Claude Code that provides cross-session memory through hook-based context injection, searchable project/global memory, and automatic checkpoint writing.
+A local memory plugin for Claude Code that provides cross-session memory through hook-based context injection, searchable project/global memory, and optional checkpoint writing.
 
 ## Features
 
 - **Hook-based memory injection**: Automatically injects relevant memory at session start and before each prompt
 - **Local storage**: All data stays on your machine (JSON store + Markdown files)
 - **Searchable memory**: Plain-text search across project/global memory and indexed summaries
-- **Automatic checkpoints**: Writes structured session checkpoints via a configurable writer model
+- **Optional checkpoints**: Writes structured session checkpoints via a configurable writer model when enabled
 - **Project and global memory**: Per-project memory files plus optional global memory
 - **Privacy-first**: No cloud sync, no data leaves your machine except configured writer calls
 - **Dream consolidation**: Manual memory cleanup and deduplication command
@@ -29,6 +29,7 @@ The writer model generates checkpoints and memory patches. Configure any OpenAI-
 cmh config set writer.baseURL https://api.openai.com/v1
 cmh config set writer.apiKeyEnv OPENAI_API_KEY
 cmh config set writer.model gpt-4o-mini
+cmh config set writer.enabled true
 ```
 
 Then set the environment variable:
@@ -60,7 +61,7 @@ Config file location: `~/.cmh/config.json`
     "maxInjectedChars": 12000
   },
   "writer": {
-    "enabled": true,
+    "enabled": false,
     "provider": "openai-compatible",
     "baseURL": "https://api.openai.com/v1",
     "apiKeyEnv": "OPENAI_API_KEY",
@@ -83,7 +84,7 @@ Config file location: `~/.cmh/config.json`
 |-----|-------------|---------|
 | `enabled` | Enable/disable the plugin | `true` |
 | `storage.maxInjectedChars` | Max characters injected into context | `12000` |
-| `writer.enabled` | Enable checkpoint writing | `true` |
+| `writer.enabled` | Enable checkpoint writing | `false` |
 | `writer.baseURL` | OpenAI-compatible API base URL | `https://api.openai.com/v1` |
 | `writer.apiKeyEnv` | Environment variable name for API key | `OPENAI_API_KEY` |
 | `writer.apiKey` | Direct API key (not recommended) | - |
@@ -134,6 +135,8 @@ cmh forget checkpoint --confirm  # Clear checkpoint
 4. **PostToolUseFailure**: Records failure events
 5. **PostCompact**: Captures compacted session summaries
 6. **Stop / SessionEnd**: Enqueues throttled checkpoint writer work; configured writer calls run in a background worker
+
+Claude Code has its own auto memory at `~/.claude/projects/<project>/memory/`. Claude Memory Harness stores plugin data separately in Claude's plugin data directory and does not read or write Claude Code's auto-memory files. Keep the harness writer disabled unless you explicitly want an additional checkpoint layer.
 
 ### Memory Files
 
@@ -201,7 +204,7 @@ npm uninstall -g claude-memory-harness
 ### No memory injected
 
 1. Check if memory files exist: `cmh memory list`
-2. Memory is only created after sessions with the writer configured
+2. Checkpoint memory is only created after sessions with the writer configured and `writer.enabled` set to `true`
 3. First session will have no prior memory (expected)
 
 ### Search returns no results

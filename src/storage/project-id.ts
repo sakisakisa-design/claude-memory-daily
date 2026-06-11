@@ -10,7 +10,12 @@ export interface ProjectInfo {
 
 function tryExec(cmd: string, cwd: string): string | null {
   try {
-    return execSync(cmd, { cwd, encoding: "utf-8", timeout: 5000 }).trim();
+    return execSync(cmd, {
+      cwd,
+      encoding: "utf-8",
+      timeout: 5000,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
   } catch {
     return null;
   }

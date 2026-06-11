@@ -24,6 +24,7 @@ describe("config", () => {
     const config = loadConfig();
     expect(config.enabled).toBe(true);
     expect(config.storage.scope).toBe("user");
+    expect(config.writer.enabled).toBe(false);
     expect(config.writer.provider).toBe("openai-compatible");
     expect(config.writer.model).toBe("gpt-4o-mini");
   });

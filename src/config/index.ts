@@ -42,7 +42,7 @@ const DEFAULT_CONFIG: CMHConfig = {
     maxInjectedChars: 12000,
   },
   writer: {
-    enabled: true,
+    enabled: false,
     provider: "openai-compatible",
     baseURL: "https://api.openai.com/v1",
     apiKeyEnv: "OPENAI_API_KEY",
