@@ -69,4 +69,20 @@ describe("memory-files", () => {
     expect(files.some((f) => f.scope === "global" && f.name === "MEMORY.md")).toBe(true);
     expect(files.some((f) => f.scope === "project" && f.name === "checkpoint.md")).toBe(true);
   });
+
+  it("keeps previous memory content if atomic rename fails", async () => {
+    const { getMemoryPath, readMemory, writeMemory } = await import("./memory-files.js");
+    writeMemory("global", undefined, "MEMORY.md", "original");
+    const path = getMemoryPath("global", undefined, "MEMORY.md");
+    mkdirSync(path + ".blocker", { recursive: true });
+
+    try {
+      // Writing to a directory path forces the atomic rename target to fail before replacing the real file.
+      const { writeMemoryAtomic } = await import("./memory-files.js");
+      expect(() => writeMemoryAtomic(path + ".blocker", "new")).toThrow();
+      expect(readMemory("global", undefined, "MEMORY.md")).toBe("original");
+    } finally {
+      rmSync(path + ".blocker", { recursive: true, force: true });
+    }
+  });
 });

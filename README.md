@@ -11,7 +11,7 @@ A local memory plugin for Claude Code that provides cross-session memory through
 - **Safe handoff**: Generates `handoff.md` before/after compaction without mutating Claude Code transcripts
 - **Project and global memory**: Per-project memory files plus optional global memory
 - **Privacy-first**: No cloud sync, no data leaves your machine except configured writer calls
-- **Dream consolidation**: Manual memory cleanup and deduplication command
+- **Experimental dream consolidation**: Manual memory cleanup command using the regular writer contract
 
 ## Quick Start
 
@@ -59,7 +59,8 @@ Config file location: `~/.cmh/config.json`
   "storage": {
     "scope": "user",
     "index": "json-plain-text",
-    "maxInjectedChars": 12000
+    "maxInjectedChars": 12000,
+    "lockStaleMs": 30000
   },
   "handoff": {
     "enabled": true,
@@ -90,6 +91,7 @@ Config file location: `~/.cmh/config.json`
 |-----|-------------|---------|
 | `enabled` | Enable/disable the plugin | `true` |
 | `storage.maxInjectedChars` | Max characters injected into context | `12000` |
+| `storage.lockStaleMs` | Recover JSON store locks older than this many milliseconds | `30000` |
 | `handoff.enabled` | Enable handoff generation on compact hooks | `true` |
 | `handoff.maxChars` | Max characters in generated handoff.md | `12000` |
 | `handoff.maxTranscriptEntries` | Transcript tail entries included in handoff | `30` |
@@ -121,8 +123,8 @@ cmh checkpoint show      # Show current checkpoint
 cmh handoff              # Generate handoff.md for the current project
 cmh handoff --show       # Show the current handoff
 cmh forge dry-run <transcript>  # Inspect a transcript forge plan without writing files
-cmh dream                # Consolidate memory (dry run)
-cmh dream --apply        # Apply memory consolidation
+cmh dream                # Experimental memory consolidation preview
+cmh dream --apply        # Apply experimental memory consolidation
 cmh forget project --confirm  # Clear project memory
 cmh forget global --confirm   # Clear global memory
 cmh forget checkpoint --confirm  # Clear checkpoint
@@ -151,6 +153,7 @@ cmh forget checkpoint --confirm  # Clear checkpoint
 
 Claude Code has its own auto memory at `~/.claude/projects/<project>/memory/`. Claude Memory Harness stores plugin data separately in Claude's plugin data directory and does not read or write Claude Code's auto-memory files. Keep the harness writer disabled unless you explicitly want an additional checkpoint layer.
 Forge is dry-run only in v0: it reports a proposed session id, retained event count, token estimate, and output path, but never writes forged JSONL or overwrites the original transcript.
+Dream is experimental in v0 and uses the normal checkpoint writer contract rather than a separate dream-specific model mode.
 
 ### Memory Files
 

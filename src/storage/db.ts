@@ -3,6 +3,7 @@ import {
   closeSync,
   existsSync,
   fsyncSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -10,7 +11,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { getDataDir } from "../config/index.js";
+import { getDataDir, loadConfig } from "../config/index.js";
 import { generateId, log } from "../utils/index.js";
 
 export interface StoredDocument {
@@ -63,7 +64,7 @@ function getStorePath(): string {
 }
 
 function loadStore(): Store {
-  if (!storePath) storePath = getStorePath();
+  storePath = getStorePath();
   if (!existsSync(storePath)) {
     return { documents: [], events: [], writer_jobs: [] };
   }
@@ -71,13 +72,21 @@ function loadStore(): Store {
     const raw = readFileSync(storePath, "utf-8");
     return JSON.parse(raw);
   } catch {
+    const corruptPath = `${storePath}.corrupt.${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    try {
+      renameSync(storePath, corruptPath);
+    } catch (quarantineError) {
+      log("ERROR", `JSON store parse failed and quarantine failed for ${storePath}`);
+      throw quarantineError;
+    }
+    log("ERROR", `JSON store parse failed; quarantined corrupt store: ${corruptPath}`);
     return { documents: [], events: [], writer_jobs: [] };
   }
 }
 
 function saveStore(): void {
   if (!store) return;
-  if (!storePath) storePath = getStorePath();
+  storePath = getStorePath();
   writeStoreAtomic(storePath, store);
 }
 
@@ -99,15 +108,26 @@ function sleepSync(ms: number): void {
 }
 
 function withStoreLock<T>(fn: () => T): T {
-  if (!storePath) storePath = getStorePath();
+  storePath = getStorePath();
   const lockPath = `${storePath}.lock`;
   mkdirSync(join(storePath, ".."), { recursive: true });
+  const staleMs = loadConfig().storage.lockStaleMs;
   const started = Date.now();
   while (true) {
     try {
       mkdirSync(lockPath, { recursive: false });
       break;
     } catch {
+      try {
+        const stat = lstatSync(lockPath);
+        if (Date.now() - stat.mtimeMs > staleMs) {
+          rmSync(lockPath, { recursive: true, force: true });
+          log("WARN", `Recovered stale JSON store lock: ${lockPath}`);
+          continue;
+        }
+      } catch {
+        // retry lock acquisition if stat/remove raced
+      }
       if (Date.now() - started > LOCK_TIMEOUT_MS) {
         throw new Error(`Timed out waiting for JSON store lock: ${lockPath}`);
       }
@@ -145,6 +165,7 @@ export function openDb(): void {
 
 export function closeDb(): void {
   store = null;
+  storePath = "";
 }
 
 export function isFtsAvailable(): boolean {

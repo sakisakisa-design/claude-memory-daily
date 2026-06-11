@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, copyFileSync, mkdirSync } from "node:fs";
+import { closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { getDataDir } from "../config/index.js";
 
@@ -47,7 +47,7 @@ export function writeMemory(
   if (existsSync(path)) {
     copyFileSync(path, path + ".bak");
   }
-  writeFileSync(path, content, "utf-8");
+  writeMemoryAtomic(path, content);
 }
 
 export function appendMemory(
@@ -86,4 +86,16 @@ export function listMemoryFiles(projectId?: string): MemoryFile[] {
   }
 
   return files;
+}
+
+export function writeMemoryAtomic(path: string, content: string): void {
+  const tmpPath = `${path}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
+  writeFileSync(tmpPath, content, "utf-8");
+  const fd = openSync(tmpPath, "r");
+  try {
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  renameSync(tmpPath, path);
 }

@@ -65,13 +65,16 @@ describe("transcript parser", () => {
     const raw = readFileSync(join(fixturesDir, "claude-code-real-session.jsonl"), "utf-8");
     const result = parseTranscript(raw);
 
-    expect(result.entries).toHaveLength(7);
+    expect(result.entries).toHaveLength(9);
     expect(result.entries[0].unknown_field).toEqual({ preserve: true });
-    expect(result.toolEvents.map((event) => event.tool)).toEqual(["Write", "Bash", "Bash"]);
+    expect(result.entries[7].vendor_extra).toEqual({ preserve: "opaque" });
+    expect(JSON.stringify(result.entries[7])).toContain("thinking");
+    expect(result.toolEvents.map((event) => event.tool)).toEqual(["Write", "Bash", "Bash", "Read"]);
     expect(result.toolEvents[0].result).toContain("File created successfully");
     expect(result.toolEvents[1].success).toBe(false);
     expect(result.toolEvents[2].success).toBe(true);
-    expect(result.summary).toContain("1 file operations");
+    expect(result.toolEvents[3].result).toContain("module");
+    expect(result.summary).toContain("2 file operations");
     expect(result.summary).toContain("2 bash commands");
     expect(result.summary).toContain("1 errors");
   });
@@ -81,6 +84,17 @@ describe("transcript parser", () => {
     const result = parseTranscript(raw);
     const serialized = JSON.stringify(result);
 
+    expect(serialized).not.toContain("sk-proj-abc123def456ghi789jkl012mno345pqr678");
+    expect(serialized).toContain("[REDACTED]");
+  });
+
+  it("returns redacted transcript tail for real Claude Code entries", () => {
+    const raw = readFileSync(join(fixturesDir, "claude-code-real-session.jsonl"), "utf-8");
+    const result = parseTranscript(raw);
+    const tail = getTranscriptTail(result.entries, 2);
+    const serialized = JSON.stringify(tail);
+
+    expect(tail).toHaveLength(2);
     expect(serialized).not.toContain("sk-proj-abc123def456ghi789jkl012mno345pqr678");
     expect(serialized).toContain("[REDACTED]");
   });

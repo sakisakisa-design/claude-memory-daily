@@ -20,6 +20,7 @@ export interface CMHConfig {
     scope: string;
     index: string;
     maxInjectedChars: number;
+    lockStaleMs: number;
   };
   handoff: {
     enabled: boolean;
@@ -45,6 +46,7 @@ const DEFAULT_CONFIG: CMHConfig = {
     scope: "user",
     index: "json-plain-text",
     maxInjectedChars: 12000,
+    lockStaleMs: 30000,
   },
   handoff: {
     enabled: true,

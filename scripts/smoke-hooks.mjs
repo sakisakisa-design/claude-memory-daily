@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,6 +33,29 @@ function runHook(fixtureFile, eventName) {
   }
 }
 
+function runHookInput(input, eventName) {
+  try {
+    const result = execSync(`node ${hookRunner} ${eventName}`, {
+      input: JSON.stringify(input),
+      encoding: "utf-8",
+      timeout: 10000,
+      env: { ...process.env, CLAUDE_PLUGIN_DATA: testDataDir },
+    });
+    return JSON.parse(result.trim() || "{}");
+  } catch (e) {
+    throw new Error(`Hook failed: ${e.message}\nstdout: ${e.stdout}\nstderr: ${e.stderr}`);
+  }
+}
+
+function runProcessWriterJob(jobId) {
+  return execSync(`node ${hookRunner} ProcessWriterJob ${jobId}`, {
+    input: "",
+    encoding: "utf-8",
+    timeout: 10000,
+    env: { ...process.env, CLAUDE_PLUGIN_DATA: testDataDir },
+  });
+}
+
 function assert(condition, message) {
   if (condition) {
     passed++;
@@ -49,6 +72,46 @@ function writeTestConfig(config) {
 
 function readStore() {
   return JSON.parse(readFileSync(storePath, "utf-8"));
+}
+
+async function startMockWriterServer(statusCode) {
+  const serverCode = `
+    const http = require("node:http");
+    const server = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", chunk => body += chunk);
+      req.on("end", () => {
+        if (${statusCode} >= 400) {
+          res.writeHead(${statusCode}, {"content-type":"application/json"});
+          res.end(JSON.stringify({error:"mock failure"}));
+          return;
+        }
+        res.writeHead(200, {"content-type":"application/json"});
+        res.end(JSON.stringify({choices:[{message:{content: JSON.stringify({
+          checkpoint_markdown:"# Checkpoint\\\\nMock writer completed.",
+          project_memory_patch:{mode:"none",markdown:""},
+          global_memory_patch:{mode:"none",markdown:""},
+          notes_markdown:"",
+          index_summary:"Mock writer indexed summary",
+          warnings:[]
+        })}}]}));
+      });
+    });
+    server.listen(0, "127.0.0.1", () => console.log(server.address().port));
+  `;
+  const child = spawn(process.execPath, ["-e", serverCode], { stdio: ["ignore", "pipe", "inherit"] });
+  const port = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("mock writer server did not start")), 5000);
+    child.stdout.once("data", (chunk) => {
+      clearTimeout(timer);
+      resolve(String(chunk).trim());
+    });
+    child.once("exit", (code) => reject(new Error(`mock writer server exited early: ${code}`)));
+  });
+  return {
+    baseURL: `http://127.0.0.1:${port}`,
+    stop: () => child.kill(),
+  };
 }
 
 function findFile(root, name) {
@@ -151,8 +214,62 @@ try {
   assert(false, `Stop hook: ${e.message}`);
 }
 
-// Test 6: PostToolUseFailure
-console.log("\n6. PostToolUseFailure hook:");
+// Test 6: ProcessWriterJob success and failure
+console.log("\n6. ProcessWriterJob:");
+try {
+  const firstJob = readStore().writer_jobs[0];
+  const successServer = await startMockWriterServer(200);
+  try {
+    writeTestConfig({
+      writer: {
+        enabled: true,
+        apiKey: "test-key",
+        baseURL: successServer.baseURL,
+        model: "mock-model",
+      },
+      storage: { index: "json-plain-text" },
+    });
+    runProcessWriterJob(firstJob.id);
+  } finally {
+    successServer.stop();
+  }
+  let store = readStore();
+  const completed = store.writer_jobs.find((job) => job.id === firstJob.id);
+  assert(completed?.status === "completed", "marks successful writer job completed");
+  const checkpointPath = findFile(join(testDataDir, "memories", "projects"), "checkpoint.md");
+  assert(!!checkpointPath && readFileSync(checkpointPath, "utf-8").includes("Mock writer completed"), "writes checkpoint.md");
+  assert(store.documents.some((doc) => doc.body.includes("Mock writer indexed summary")), "indexes writer summary");
+
+  writeTestConfig({ writer: { enabled: true, apiKeyEnv: "__CMH_MISSING_WRITER_KEY__" }, storage: { index: "json-plain-text" } });
+  runHookInput({ hook_event_name: "Stop", session_id: "test-session-failure", cwd: "/tmp/test-project" }, "Stop");
+  store = readStore();
+  const failureJob = store.writer_jobs.find((job) => job.session_id === "test-session-failure");
+  const failureServer = await startMockWriterServer(500);
+  try {
+    writeTestConfig({
+      writer: {
+        enabled: true,
+        apiKey: "test-key",
+        baseURL: failureServer.baseURL,
+        model: "mock-model",
+      },
+      storage: { index: "json-plain-text" },
+    });
+    runProcessWriterJob(failureJob.id);
+  } finally {
+    failureServer.stop();
+  }
+  store = readStore();
+  const failed = store.writer_jobs.find((job) => job.id === failureJob.id);
+  assert(failed?.status === "pending", "keeps failed writer job pending");
+  assert(typeof failed?.error === "string" && failed.error.includes("Writer API error 500"), "records writer failure error");
+  writeTestConfig({ writer: { enabled: false }, storage: { index: "json-plain-text" } });
+} catch (e) {
+  assert(false, `ProcessWriterJob: ${e.message}`);
+}
+
+// Test 7: PostToolUseFailure
+console.log("\n7. PostToolUseFailure hook:");
 try {
   const result = runHook("post-tool-use-failure.json", "PostToolUseFailure");
   assert(typeof result === "object", "returns valid JSON object");
@@ -160,8 +277,8 @@ try {
   assert(false, `PostToolUseFailure hook: ${e.message}`);
 }
 
-// Test 7: PreCompact
-console.log("\n7. PreCompact hook:");
+// Test 8: PreCompact
+console.log("\n8. PreCompact hook:");
 try {
   const result = runHook("pre-compact.json", "PreCompact");
   assert(typeof result === "object", "returns valid JSON object");
@@ -172,8 +289,8 @@ try {
   assert(false, `PreCompact hook: ${e.message}`);
 }
 
-// Test 8: PostCompact
-console.log("\n8. PostCompact hook:");
+// Test 9: PostCompact
+console.log("\n9. PostCompact hook:");
 try {
   const result = runHook("post-compact.json", "PostCompact");
   assert(typeof result === "object", "returns valid JSON object");
@@ -181,8 +298,8 @@ try {
   assert(false, `PostCompact hook: ${e.message}`);
 }
 
-// Test 9: Empty input
-console.log("\n9. Empty input handling:");
+// Test 10: Empty input
+console.log("\n10. Empty input handling:");
 try {
   const result = execSync(`node ${hookRunner} SessionStart`, {
     input: "",
