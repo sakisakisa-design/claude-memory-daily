@@ -92,6 +92,8 @@ Config file location: `~/.cmh/config.json`
 | `writer.maxTokens` | Max tokens in writer response | `4000` |
 | `writer.timeoutMs` | Writer request timeout | `45000` |
 
+Redaction is always applied on hook capture, transcript parsing, writer prompts, and config display. The `redaction` config block is retained for compatibility and future display tuning; setting `redaction.enabled` to `false` does not disable redaction on those sensitive paths.
+
 ## CLI Commands
 
 ```bash

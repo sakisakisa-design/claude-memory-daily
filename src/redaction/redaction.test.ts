@@ -55,4 +55,11 @@ describe("redaction", () => {
     expect(containsSecret("sk-proj-abc123def456ghi789jkl012mno345pqr678")).toBe(true);
     expect(containsSecret("normal text without secrets")).toBe(false);
   });
+
+  it("detects the same secret deterministically across repeated calls", () => {
+    const secret = "sk-proj-abc123def456ghi789jkl012mno345pqr678";
+    expect(containsSecret(secret)).toBe(true);
+    expect(containsSecret(secret)).toBe(true);
+    expect(containsSecret(secret)).toBe(true);
+  });
 });

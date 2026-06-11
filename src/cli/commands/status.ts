@@ -20,7 +20,7 @@ export const statusCmd = new Command("status")
     console.log(`  Config:       ${existsSync(join(dataDir, "config.json")) ? "found" : "missing"}`);
     console.log(`  Writer:       ${config.writer.enabled ? `${config.writer.baseURL} / ${config.writer.model}` : "disabled"}`);
     console.log(`  API key:      ${resolveApiKey(config) ? "configured" : "not set"}`);
-    console.log(`  Redaction:    ${config.redaction.enabled ? "enabled" : "disabled"}`);
+    console.log("  Redaction:    always on for hook/writer paths");
     console.log("");
 
     console.log(`  Project:      ${project.alias}`);

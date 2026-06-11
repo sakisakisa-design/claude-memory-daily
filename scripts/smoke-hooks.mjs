@@ -11,6 +11,8 @@ const fixturesDir = join(projectRoot, "fixtures", "hooks");
 const hookRunner = join(projectRoot, "dist", "hooks", "hook-runner.js");
 const testDataDir = join(projectRoot, ".cmh-test");
 const transcriptPath = join(projectRoot, "fixtures", "transcripts", "simple-session.jsonl");
+const configPath = join(testDataDir, "config.json");
+const storePath = join(testDataDir, "store.json");
 
 let passed = 0;
 let failed = 0;
@@ -41,6 +43,14 @@ function assert(condition, message) {
   }
 }
 
+function writeTestConfig(config) {
+  writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+}
+
+function readStore() {
+  return JSON.parse(readFileSync(storePath, "utf-8"));
+}
+
 console.log("Smoke test: Claude Memory Harness hooks\n");
 
 try {
@@ -51,11 +61,7 @@ try {
     "# Auth Module\nThe login bug lives in the auth module and uses JWT authentication.\n",
     "utf-8"
   );
-  writeFileSync(
-    join(testDataDir, "config.json"),
-    JSON.stringify({ writer: { enabled: false }, storage: { index: "json-plain-text" } }, null, 2),
-    "utf-8"
-  );
+  writeTestConfig({ writer: { enabled: false }, storage: { index: "json-plain-text" } });
 } catch (e) {
   console.error(`Failed to prepare smoke data: ${e.message}`);
   process.exit(1);
@@ -105,11 +111,28 @@ try {
   assert(false, `PostToolUse Bash hook: ${e.message}`);
 }
 
-// Test 5: Stop (without writer configured)
+// Test 5: Stop enqueues writer work without synchronous writer call
 console.log("\n5. Stop hook:");
 try {
+  writeTestConfig({
+    writer: {
+      enabled: true,
+      apiKeyEnv: "__CMH_MISSING_WRITER_KEY__",
+    },
+    storage: { index: "json-plain-text" },
+  });
   const result = runHook("stop.json", "Stop");
   assert(typeof result === "object", "returns valid JSON object");
+  const store = readStore();
+  assert(store.writer_jobs?.length === 1, "enqueues one writer job");
+  assert(store.writer_jobs[0].status === "pending", "writer job remains pending without API key");
+  try {
+    readFileSync(join(testDataDir, "memories", "projects", store.writer_jobs[0].project_id, "checkpoint.md"), "utf-8");
+    assert(false, "does not write checkpoint synchronously");
+  } catch {
+    assert(true, "does not write checkpoint synchronously");
+  }
+  writeTestConfig({ writer: { enabled: false }, storage: { index: "json-plain-text" } });
 } catch (e) {
   assert(false, `Stop hook: ${e.message}`);
 }

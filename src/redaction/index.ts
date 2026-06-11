@@ -58,5 +58,8 @@ export function redactValue<T>(value: T, env: Record<string, string | undefined>
 }
 
 export function containsSecret(text: string): boolean {
-  return SECRET_PATTERNS.some((p) => p.test(text));
+  return SECRET_PATTERNS.some((pattern) => {
+    pattern.lastIndex = 0;
+    return pattern.test(text);
+  });
 }

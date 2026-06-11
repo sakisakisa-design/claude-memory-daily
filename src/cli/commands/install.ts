@@ -1,8 +1,9 @@
 import { Command } from "commander";
-import { existsSync, mkdirSync, symlinkSync, readFileSync, writeFileSync, cpSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, symlinkSync, cpSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { ensureDataDir, getDataDir, saveConfig, loadConfig } from "../../config/index.js";
+import { fileURLToPath } from "node:url";
+import { ensureDataDir, saveConfig, loadConfig } from "../../config/index.js";
 
 export const installCmd = new Command("install")
   .description("Install Claude Memory Harness as a Claude Code plugin")
@@ -23,7 +24,7 @@ export const installCmd = new Command("install")
 
     const claudeDir = join(homedir(), ".claude");
     const pluginDir = join(claudeDir, "plugins", "claude-memory-harness");
-    const packageRoot = join(import.meta.url.replace("file://", ""), "..", "..", "..");
+    const packageRoot = resolvePackageRoot(import.meta.url);
 
     mkdirSync(join(claudeDir, "plugins"), { recursive: true });
 
@@ -57,3 +58,16 @@ export const installCmd = new Command("install")
     console.log("  For development, use:");
     console.log("     claude --plugin-dir ./");
   });
+
+export function resolvePackageRoot(moduleUrl: string): string {
+  let current = dirname(fileURLToPath(moduleUrl));
+  for (let i = 0; i < 6; i++) {
+    if (existsSync(join(current, "package.json")) && existsSync(join(current, "hooks"))) {
+      return current;
+    }
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return join(dirname(fileURLToPath(moduleUrl)), "..", "..");
+}

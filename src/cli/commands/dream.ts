@@ -21,32 +21,6 @@ export const dreamCmd = new Command("dream")
     const globalMemory = readMemory("global", undefined, "MEMORY.md");
     const notes = readMemory("project", project.projectId, "notes.md");
 
-    const dreamPrompt = `You are performing a "dream" memory consolidation. Review the following memories and:
-1. Remove duplicate or contradictory entries
-2. Consolidate repeated findings into stable notes
-3. Clean up stale information
-4. Keep only durable, useful knowledge
-
-Current memories to consolidate:
-
-## Project Memory
-${projectMemory || "(empty)"}
-
-## Global Memory
-${globalMemory || "(empty)"}
-
-## Notes
-${notes || "(empty)"}
-
-Provide consolidated versions of each section. Only include sections that have meaningful content.
-Respond with JSON:
-{
-  "project_memory": "consolidated project memory markdown or empty string",
-  "global_memory": "consolidated global memory markdown or empty string",
-  "notes": "consolidated notes markdown or empty string",
-  "changes_summary": "description of what was changed"
-}`;
-
     const writerInput = {
       projectMemory,
       globalMemory,

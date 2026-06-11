@@ -22,6 +22,11 @@ export interface CMHConfig {
     maxInjectedChars: number;
   };
   writer: WriterConfig;
+  /**
+   * Retained for config compatibility and future non-sensitive display tuning.
+   * Hook capture, transcript parsing, writer prompts, and config display always
+   * redact secrets regardless of these flags.
+   */
   redaction: {
     enabled: boolean;
     redactEnvValues: boolean;
