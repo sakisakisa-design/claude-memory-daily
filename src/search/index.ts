@@ -16,8 +16,7 @@ export function searchMemory(query: string, projectId: string | undefined, limit
 
 function searchPlainText(query: string, projectId: string | undefined, limit: number): SearchResult[] {
   const results: SearchResult[] = [];
-  const queryLower = query.toLowerCase();
-  const terms = queryLower.split(/\s+/).filter(Boolean);
+  const terms = tokenize(query);
   if (terms.length === 0) return [];
 
   const files = listMemoryFiles(projectId);
@@ -56,6 +55,27 @@ function searchPlainText(query: string, projectId: string | undefined, limit: nu
 
   results.sort((a, b) => b.score - a.score);
   return results.slice(0, limit);
+}
+
+export function tokenize(text: string): string[] {
+  const segments = text.toLowerCase().match(/[\p{Script=Han}]+|[a-z0-9_+.-]+/gu) ?? [];
+  const terms: string[] = [];
+
+  for (const segment of segments) {
+    if (/^\p{Script=Han}+$/u.test(segment)) {
+      if (segment.length === 1) {
+        terms.push(segment);
+        continue;
+      }
+      for (let i = 0; i < segment.length - 1; i++) {
+        terms.push(segment.slice(i, i + 2));
+      }
+    } else {
+      terms.push(segment);
+    }
+  }
+
+  return [...new Set(terms)];
 }
 
 function scoreText(text: string, terms: string[]): number {

@@ -1,5 +1,17 @@
-import { closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import {
+  closeSync,
+  copyFileSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { join, dirname, basename } from "node:path";
 import { getDataDir } from "../config/index.js";
 
 export type MemoryScope = "global" | "project";
@@ -10,6 +22,8 @@ export interface MemoryFile {
   name: string;
   path: string;
 }
+
+const MAX_TIMESTAMPED_BACKUPS = 5;
 
 function globalDir(): string {
   return join(getDataDir(), "memories", "global");
@@ -45,9 +59,39 @@ export function writeMemory(
   const path = getMemoryPath(scope, projectId, name);
   mkdirSync(dirname(path), { recursive: true });
   if (existsSync(path)) {
-    copyFileSync(path, path + ".bak");
+    createMemoryBackup(path);
   }
   writeMemoryAtomic(path, content);
+}
+
+function createMemoryBackup(path: string): void {
+  copyFileSync(path, path + ".bak");
+  copyFileSync(path, nextTimestampedBackupPath(path));
+  pruneTimestampedBackups(path);
+}
+
+function nextTimestampedBackupPath(path: string): string {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  let candidate = `${path}.bak.${stamp}`;
+  let suffix = 1;
+  while (existsSync(candidate)) {
+    candidate = `${path}.bak.${stamp}.${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+function pruneTimestampedBackups(path: string): void {
+  const dir = dirname(path);
+  const prefix = `${basename(path)}.bak.`;
+  const backups = readdirSync(dir)
+    .filter((name) => name.startsWith(prefix))
+    .sort()
+    .reverse();
+
+  for (const name of backups.slice(MAX_TIMESTAMPED_BACKUPS)) {
+    unlinkSync(join(dir, name));
+  }
 }
 
 export function appendMemory(

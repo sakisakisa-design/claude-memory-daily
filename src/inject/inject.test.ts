@@ -60,4 +60,19 @@ describe("inject", () => {
     expect(context).toContain("Global Memory");
     expect(context).toContain("TypeScript");
   });
+
+  it("does not repeat handoff in per-prompt context", async () => {
+    const { writeMemory } = await import("../storage/memory-files.js");
+    const { buildPromptContext, buildSessionContext } = await import("./index.js");
+
+    writeMemory("project", "test-proj", "handoff.md", "# Handoff\nContinue checkout work.");
+    writeMemory("project", "test-proj", "MEMORY.md", "# Checkout\nPayment retries use idempotency keys.");
+
+    const sessionContext = buildSessionContext("test-proj");
+    const promptContext = buildPromptContext("test-proj", "payment retries");
+
+    expect(sessionContext).toContain("Latest Handoff");
+    expect(promptContext).toContain("Payment retries");
+    expect(promptContext).not.toContain("Latest Handoff");
+  });
 });

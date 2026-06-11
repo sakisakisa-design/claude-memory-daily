@@ -144,8 +144,22 @@ try {
   process.exit(1);
 }
 
+// Test 0: hooks.json config
+console.log("0. hooks.json config:");
+try {
+  const hooksConfig = JSON.parse(readFileSync(join(projectRoot, "hooks", "hooks.json"), "utf-8"));
+  const postToolUse = hooksConfig.hooks.PostToolUse[0];
+  const postToolUseFailure = hooksConfig.hooks.PostToolUseFailure[0];
+  assert(postToolUse.matcher === "Bash|Write|Edit|MultiEdit", "PostToolUse matcher is narrowed");
+  assert(postToolUse.hooks[0].async === true, "PostToolUse runs asynchronously");
+  assert(postToolUseFailure.matcher === "Bash|Write|Edit|MultiEdit", "PostToolUseFailure matcher is narrowed");
+  assert(postToolUseFailure.hooks[0].async === true, "PostToolUseFailure runs asynchronously");
+} catch (e) {
+  assert(false, `hooks config: ${e.message}`);
+}
+
 // Test 1: SessionStart
-console.log("1. SessionStart hook:");
+console.log("\n1. SessionStart hook:");
 try {
   const result = runHook("session-start.json", "SessionStart");
   assert(typeof result === "object", "returns valid JSON object");

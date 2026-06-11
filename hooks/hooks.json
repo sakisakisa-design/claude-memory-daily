@@ -24,22 +24,24 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "",
+        "matcher": "Bash|Write|Edit|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/hook-runner.js\" PostToolUse"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/hook-runner.js\" PostToolUse",
+            "async": true
           }
         ]
       }
     ],
     "PostToolUseFailure": [
       {
-        "matcher": "",
+        "matcher": "Bash|Write|Edit|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/hook-runner.js\" PostToolUseFailure"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/hook-runner.js\" PostToolUseFailure",
+            "async": true
           }
         ]
       }

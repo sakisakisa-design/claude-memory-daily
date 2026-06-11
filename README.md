@@ -6,7 +6,7 @@ A local memory plugin for Claude Code that provides cross-session memory through
 
 - **Hook-based memory injection**: Automatically injects relevant memory at session start and before each prompt
 - **Local storage**: All data stays on your machine (JSON store + Markdown files)
-- **Searchable memory**: Plain-text search across project/global memory and indexed summaries
+- **Searchable memory**: Plain-text search across project/global memory and indexed summaries, including CJK bigram matching
 - **Optional checkpoints**: Writes structured session checkpoints via a configurable writer model when enabled
 - **Safe handoff**: Generates `handoff.md` before/after compaction without mutating Claude Code transcripts
 - **Project and global memory**: Per-project memory files plus optional global memory
@@ -145,8 +145,8 @@ cmh forget checkpoint --confirm  # Clear checkpoint
 
 1. **SessionStart**: Loads project/global memory and checkpoint, injects as context
 2. **UserPromptSubmit**: Searches memory for relevant context based on the prompt
-3. **PostToolUse**: Records high-signal tool events (file writes, bash commands)
-4. **PostToolUseFailure**: Records failure events
+3. **PostToolUse**: Asynchronously records high-signal Bash and file-edit events
+4. **PostToolUseFailure**: Asynchronously records failures for the same high-signal tools
 5. **PreCompact**: Writes a safe handoff before compaction
 6. **PostCompact**: Captures compacted session summaries and refreshes handoff
 7. **Stop / SessionEnd**: Enqueues throttled checkpoint writer work; configured writer calls run in a background worker
@@ -171,6 +171,8 @@ Dream is experimental in v0 and uses the normal checkpoint writer contract rathe
         notes.md
         handoff.md
 ```
+
+Memory overwrites keep a quick rollback `.bak` file plus the latest five timestamped `.bak.*` backups.
 
 ### Project ID
 

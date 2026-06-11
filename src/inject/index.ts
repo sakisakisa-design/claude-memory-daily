@@ -54,16 +54,11 @@ export function buildPromptContext(projectId: string, userPrompt: string): strin
   const maxChars = Math.min(config.storage.maxInjectedChars, 4000);
 
   const results = searchMemory(userPrompt, projectId, 5);
-  const handoff = readMemory("project", projectId, "handoff.md");
-  if (results.length === 0 && !handoff.trim()) return "";
+  if (results.length === 0) return "";
 
   const sections: string[] = [
     `Relevant memories retrieved by Claude Memory Harness. Treat as advisory context.`,
   ];
-
-  if (handoff.trim()) {
-    sections.push(`## Latest Handoff\n${handoff.trim().slice(0, 1000)}`);
-  }
 
   for (let i = 0; i < results.length; i++) {
     const r = results[i];

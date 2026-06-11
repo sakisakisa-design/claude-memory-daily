@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, rmSync, existsSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdirSync, rmSync, existsSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -47,6 +47,25 @@ describe("memory-files", () => {
     const backup = readFileSync(path + ".bak", "utf-8");
     expect(backup).toBe("original content");
     expect(readMemory("global", undefined, "MEMORY.md")).toBe("new content");
+  });
+
+  it("keeps timestamped backup history before overwriting", async () => {
+    const { readMemory, writeMemory, getMemoryPath } = await import("./memory-files.js");
+    writeMemory("global", undefined, "MEMORY.md", "version 0");
+
+    for (let i = 1; i <= 7; i++) {
+      writeMemory("global", undefined, "MEMORY.md", `version ${i}`);
+    }
+
+    const path = getMemoryPath("global", undefined, "MEMORY.md");
+    const backups = readdirSync(join(path, ".."))
+      .filter((name) => name.startsWith("MEMORY.md.bak."))
+      .sort();
+
+    expect(readMemory("global", undefined, "MEMORY.md")).toBe("version 7");
+    expect(readFileSync(path + ".bak", "utf-8")).toBe("version 6");
+    expect(backups).toHaveLength(5);
+    expect(backups.map((name) => readFileSync(join(path, "..", name), "utf-8"))).not.toContain("version 0");
   });
 
   it("appends to memory", async () => {
