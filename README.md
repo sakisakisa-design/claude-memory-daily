@@ -22,6 +22,8 @@ npm install -g claude-memory-harness
 cmh install
 ```
 
+`cmh install` creates the local data directory, registers a local Claude Code marketplace named `local-memory-harness`, and installs/enables `claude-memory-harness@local-memory-harness` when the `claude` CLI is available. It also keeps the legacy `~/.claude/plugins/claude-memory-harness` link for older Claude Code builds.
+
 ### Configure Writer Model
 
 The writer model generates checkpoints and memory patches. Configure any OpenAI-compatible endpoint:
@@ -196,8 +198,13 @@ Projects are identified by a hash of the git remote URL and repo root path. Non-
 ## Uninstall
 
 ```bash
-# Remove the plugin symlink
+# Remove the Claude Code plugin registration
+claude plugin uninstall claude-memory-harness@local-memory-harness
+claude plugin marketplace remove local-memory-harness
+
+# Remove local plugin links
 rm -rf ~/.claude/plugins/claude-memory-harness
+rm -rf ~/.claude/plugins/local-memory-harness
 
 # Remove data (optional)
 rm -rf ~/.cmh
@@ -211,8 +218,9 @@ npm uninstall -g claude-memory-harness
 ### Plugin not loading
 
 1. Run `cmh doctor` to check installation
-2. Ensure `~/.claude/plugins/claude-memory-harness` exists
-3. Restart Claude Code or run `/reload-plugins`
+2. Run `claude plugin list` and ensure `claude-memory-harness@local-memory-harness` is installed and enabled
+3. Ensure `~/.claude/plugins/local-memory-harness/.claude-plugin/marketplace.json` exists
+4. Restart Claude Code or run `/reload-plugins`
 
 ### Writer not working
 

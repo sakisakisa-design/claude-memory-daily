@@ -36,6 +36,7 @@
     "node": ">=18.0.0"
   },
   "files": [
+    ".claude-plugin/",
     "dist/",
     "hooks/",
     "skills/",
